@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0a0b0d;
+  --color-panel: #101216;
+  --color-raised: #171a1f;
+  --color-line: #23272e;
+  --color-line-soft: #1a1d23;
+  --color-ink: #e9ebee;
+  --color-muted: #8d949e;
+  --color-dim: #5b626c;
+  --color-accent: #ff6b35;
+  --color-accent-soft: #3a1d10;
+
+  --color-cat-coordinates: #6ea8fe;
+  --color-cat-geometry: #6ee7a8;
+  --color-cat-attributes: #ffb86b;
+  --color-cat-structure: #c792ea;
+  --color-cat-encoding: #ff7b72;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #0a0b0d;
+}
+
+/* Range inputs need explicit styling in both engines to look like one control. */
+input[type="range"] {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--color-line);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: var(--color-line);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  height: 14px;
+  width: 14px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px var(--color-accent-soft);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
