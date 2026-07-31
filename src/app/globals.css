@@ -50,6 +50,15 @@ body {
   color: #fff;
 }
 
+/* Host Grotesk carries no emoji glyphs, so name the colour emoji fonts
+   explicitly rather than leaving it to the browser's fallback chain. */
+.emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
+    "Twemoji Mozilla", sans-serif;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
 /* Display numerals: tight, tabular, and optically aligned like the reference. */
 .display-figure {
   font-weight: 700;

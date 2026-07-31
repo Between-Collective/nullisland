@@ -228,6 +228,10 @@ export function Generator() {
             onClick={randomiseEverything}
             title="Roll a new format, size, place and problem set in one go"
           >
+            {/* Decorative: the label already says what the button does. */}
+            <span className="emoji" aria-hidden>
+              🎲
+            </span>
             Randomise everything
           </Button>
           <Button onClick={share} title="Copy a link that reproduces this exact file">
