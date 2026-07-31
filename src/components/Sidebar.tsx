@@ -19,7 +19,6 @@ function FormatTile({
   ext,
   hint,
   active,
-  wide,
   onSelect,
 }: {
   id: FormatId;
@@ -27,7 +26,6 @@ function FormatTile({
   ext: string;
   hint: string;
   active: boolean;
-  wide?: boolean;
   onSelect: (id: FormatId) => void;
 }) {
   return (
@@ -38,16 +36,15 @@ function FormatTile({
       title={hint}
       onClick={() => onSelect(id)}
       className={[
-        "rounded-2xl border px-3 text-left transition-colors",
-        wide ? "py-4" : "py-3.5",
+        "rounded-xl border px-2.5 py-3 text-left transition-colors",
         active
           ? "border-ink bg-ink text-white"
           : "border-line-strong bg-white text-ink hover:border-dim",
       ].join(" ")}
     >
-      <span className="block text-[13px] font-semibold tracking-tight">{label}</span>
+      <span className="block truncate text-[12px] font-semibold tracking-tight">{label}</span>
       <span
-        className={`mt-0.5 block font-mono text-[10.5px] ${active ? "text-white/55" : "text-dim"}`}
+        className={`mt-0.5 block truncate font-mono text-[10px] ${active ? "text-white/55" : "text-dim"}`}
       >
         .{ext}
       </span>
@@ -66,31 +63,20 @@ export function Sidebar({
   countSteps: number[];
   countIndex: number;
 }) {
-  const [lead, ...rest] = FORMATS;
-
   return (
     <aside className="order-2 flex flex-col gap-6 border-line bg-card p-4 sm:p-5 lg:order-1 lg:h-full lg:border-r">
       <div className="flex items-center justify-between">
         <Wordmark />
       </div>
 
-      {/* One prominent tile plus a grid, echoing a primary nav. */}
+      {/* Nine formats divide exactly into a 3x3 block, so every tile is the
+          same size at every breakpoint. */}
       <div role="radiogroup" aria-label="Output format" className="space-y-2">
         <span className="block text-[10.5px] font-semibold uppercase tracking-[0.13em] text-dim">
           Format
         </span>
-        <FormatTile
-          id={lead.id}
-          label={lead.label}
-          ext={lead.ext}
-          hint={lead.blurb}
-          active={opts.format === lead.id}
-          wide
-          onSelect={(id) => patch({ format: id })}
-        />
-        {/* Tighter on small screens, where nine tiles would otherwise run on. */}
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-2">
-          {rest.map((format) => (
+        <div className="grid grid-cols-3 gap-2">
+          {FORMATS.map((format) => (
             <FormatTile
               key={format.id}
               id={format.id}

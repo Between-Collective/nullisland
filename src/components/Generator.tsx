@@ -183,7 +183,7 @@ export function Generator() {
   return (
     /* Output first on a phone — the file and its Download are the point, and
        the settings column is long. Side by side from lg up, sidebar leading. */
-    <div className="grid lg:grid-cols-[292px_minmax(0,1fr)]">
+    <div className="grid lg:grid-cols-[316px_minmax(0,1fr)]">
       <Sidebar
         opts={opts}
         patch={patch}
