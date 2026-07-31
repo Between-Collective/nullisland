@@ -2,6 +2,9 @@
 import { generate, MAX_FEATURES } from "../src/lib/generate";
 import { FORMATS } from "../src/lib/formats/index";
 import { PROBLEMS, appliesTo } from "../src/lib/problems";
+import { randomSeed } from "../src/lib/rng";
+import { SEED_WORDS } from "../src/lib/seed-words";
+import { decodeConfig, encodeConfig } from "../src/lib/share";
 import type { FormatId, GenerateOptions } from "../src/lib/types";
 
 let failures = 0;
@@ -396,6 +399,41 @@ console.log("\n5c. map preview");
   const file = generate(opts({ format: "geojson", shape: "line", count: 40000, problems: ["vertex-bomb"], seed: "mp" }));
   ok("map preview is subsampled", file.map.points.length <= 1600, `${file.map.points.length}`);
   ok("map preview still counts every position", file.map.total > 100000, `${file.map.total}`);
+}
+
+/* ── 5d. three-word seeds ────────────────────────────────────────────────── */
+console.log("\n5d. seeds");
+{
+  const pool = new Set(SEED_WORDS);
+  const seen = new Set<string>();
+  let malformed = 0;
+  let repeated = 0;
+  let unknown = 0;
+  for (let i = 0; i < 400; i++) {
+    const seed = randomSeed();
+    const words = seed.split("-");
+    if (words.length !== 3) malformed++;
+    if (new Set(words).size !== words.length) repeated++;
+    if (words.some((w) => !pool.has(w))) unknown++;
+    seen.add(seed);
+  }
+  ok("seeds are three words", malformed === 0, `${malformed} malformed`);
+  ok("seeds never repeat a word", repeated === 0, `${repeated} with repeats`);
+  ok("seeds only use the pool", unknown === 0, `${unknown} off-pool`);
+  ok("seeds are well spread", seen.size >= 395, `${seen.size}/400 unique`);
+  ok("seed words are url-safe", SEED_WORDS.every((w) => /^[a-z]{2,9}$/.test(w)));
+  ok("pool is large enough to matter", SEED_WORDS.length >= 150, `${SEED_WORDS.length} words`);
+  ok("pool has no duplicates", pool.size === SEED_WORDS.length);
+}
+{
+  // A hyphenated seed has to survive the share link and reach the file intact.
+  const config = opts({ seed: "harbor-lantern-drift", format: "geojson", count: 40 });
+  const round = decodeConfig("#" + encodeConfig(config));
+  ok("word seed round-trips through the url", round.seed === "harbor-lantern-drift", String(round.seed));
+  const a = generate(config);
+  const b = generate({ ...config, ...round } as GenerateOptions);
+  ok("word seed reproduces identical bytes", a.data === b.data);
+  ok("word seed reaches the filename", a.filename.includes("harbor-lantern-drift"), a.filename);
 }
 
 /* ── 6. scale ────────────────────────────────────────────────────────────── */

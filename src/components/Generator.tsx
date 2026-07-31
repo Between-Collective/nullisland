@@ -7,7 +7,7 @@ import { ProblemGrid } from "./ProblemGrid";
 import { Sidebar } from "./Sidebar";
 import { Button, Card } from "./ui";
 import { copyFile, downloadFile } from "@/lib/download";
-import { FORMATS } from "@/lib/formats/index";
+import { FORMATS, getFormat } from "@/lib/formats/index";
 import { generate, MAX_FEATURES } from "@/lib/generate";
 import { appliesTo, PROBLEMS } from "@/lib/problems";
 import { REGIONS } from "@/lib/regions";
@@ -37,7 +37,7 @@ const DEFAULTS: GenerateOptions = {
   intensity: 0.4,
   // Replaced with a random one on mount; a constant keeps SSR and the first
   // client render identical.
-  seed: "firstrun",
+  seed: "quartz-harbor-drift",
   pretty: true,
 };
 
@@ -201,7 +201,7 @@ export function Generator() {
               onChange={(e) => patch({ seed: e.target.value.slice(0, 40) })}
               spellCheck={false}
               aria-label="Seed"
-              placeholder="anything reproducible"
+              placeholder="three-word-seed, or anything you like"
               className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-ink outline-none placeholder:text-dim"
             />
           </label>
@@ -240,7 +240,7 @@ export function Generator() {
         ) : (
           <div className="space-y-3">
             <HeroPanel file={file} busy={busy} onDownload={download} onCopy={copy} />
-            <OutputPanel file={file} />
+            <OutputPanel file={file} formatLabel={getFormat(opts.format).label} />
           </div>
         )}
 

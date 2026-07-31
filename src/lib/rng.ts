@@ -1,3 +1,5 @@
+import { SEED_WORDS } from "./seed-words";
+
 /**
  * Deterministic seeded RNG. Same seed in, byte-identical file out — which is the
  * whole point of a fixture generator: a failing test can be reproduced from the
@@ -81,13 +83,25 @@ export class Rng {
   }
 }
 
-const SEED_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
-
-/** Short, human-readable, double-click-selectable seeds. */
+/**
+ * Three hyphenated words, so a seed survives being read down a phone or typed
+ * from a screenshot into a test case. Any string works as a seed — this only
+ * decides what the generated ones look like.
+ *
+ * ~186 words, three distinct ones: about 6.4 million combinations.
+ */
 export function randomSeed(): string {
-  let out = "";
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  for (const b of bytes) out += SEED_ALPHABET[b % SEED_ALPHABET.length];
-  return out;
+  const draws = new Uint32Array(3);
+  crypto.getRandomValues(draws);
+
+  const used = new Set<number>();
+  const words: string[] = [];
+  for (const draw of draws) {
+    let index = draw % SEED_WORDS.length;
+    // Walk forward on a collision, so no seed repeats a word.
+    while (used.has(index)) index = (index + 1) % SEED_WORDS.length;
+    used.add(index);
+    words.push(SEED_WORDS[index]);
+  }
+  return words.join("-");
 }
