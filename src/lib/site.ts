@@ -1,8 +1,7 @@
-/**
- * Set this to the public repository URL once the repo is made public. While it
- * is empty the footer simply omits the link rather than shipping a dead 404.
- */
-export const REPO_URL = "";
+export const REPO_URL = "https://github.com/Between-Collective/nullisland";
+export const ISSUES_URL = `${REPO_URL}/issues`;
+export const NEW_ISSUE_URL = `${REPO_URL}/issues/new`;
+export const LICENCE = "MIT";
 
 export const CREDIT = "bcagency.io";
 export const CREDIT_URL = "https://bcagency.io";

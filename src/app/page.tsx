@@ -1,5 +1,5 @@
 import { Generator } from "@/components/Generator";
-import { CREDIT, CREDIT_URL, REPO_URL } from "@/lib/site";
+import { CREDIT, CREDIT_URL, ISSUES_URL, LICENCE, REPO_URL } from "@/lib/site";
 
 export default function Home() {
   return (
@@ -22,11 +22,23 @@ export default function Home() {
 
         <footer className="flex flex-wrap items-center gap-x-5 gap-y-2 px-2 py-5 text-[11.5px] text-muted sm:px-3">
           <span>Nothing is uploaded. Every file is reproducible from its seed.</span>
-          {REPO_URL && (
-            <a href={REPO_URL} className="underline underline-offset-2 hover:text-ink">
-              Source
-            </a>
-          )}
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 hover:text-ink"
+          >
+            Source
+          </a>
+          <a
+            href={ISSUES_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 hover:text-ink"
+          >
+            Bugs &amp; suggestions
+          </a>
+          <span>{LICENCE} licensed</span>
           <a href={CREDIT_URL} className="ml-auto underline underline-offset-2 hover:text-ink">
             {CREDIT}
           </a>

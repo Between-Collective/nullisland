@@ -121,10 +121,17 @@ The full configuration lives in the URL hash, so every file you generate has a l
 
 Host Grotesk, a near-black `#0C0D0D`, and a single signature mint `#ECF4EE` that marks anything generated. Light only — it's a daytime tool. Tokens live in `src/app/globals.css`; there are no component libraries and no CSS beyond Tailwind utilities.
 
-## Publishing
+## Contributing
 
-`REPO_URL` in `src/lib/site.ts` is empty, so the footer omits the source link. Set it once the repository is public.
+42 problems is not all of them. If a real file broke your viewer in a way this can't reproduce yet, [open an issue](https://github.com/Between-Collective/nullisland/issues/new) and describe it — the file, the viewer, and what went wrong.
+
+Pull requests welcome. A new problem is two things:
+
+1. An entry in `src/lib/problems.ts` — id, label, a one-line blurb describing what actually breaks, a category, a phase (`data` for feature-level, `text` for byte-level), and `appliesTo` if only some formats can express it.
+2. A transform in `src/lib/mutate.ts`, registered in the `ORDER` array. Geometry is reshaped before coordinates are mangled, coordinates before attributes, and whole-dataset transforms last.
+
+Run `npm run check` before opening a PR. Anything new should keep the suite green, and problems that apply to every format get exercised against every format automatically.
 
 ## Licence
 
-MIT.
+MIT — see [LICENSE](LICENSE).

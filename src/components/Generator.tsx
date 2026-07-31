@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Contribute } from "./Contribute";
 import { HeroPanel } from "./HeroPanel";
 import { OutputPanel } from "./OutputPanel";
 import { ProblemGrid } from "./ProblemGrid";
@@ -265,6 +266,8 @@ export function Generator() {
             onClear={() => patch({ problems: [] })}
           />
         </div>
+
+        <Contribute />
       </main>
     </div>
   );
