@@ -89,6 +89,25 @@ export interface GenerateOptions {
   pretty: boolean;
 }
 
+/**
+ * A sampled view of where the generated geometry actually landed, so the UI can
+ * plot it. This is the fastest way to *see* what a problem did — coincident
+ * points collapse to one dot, swapped lat/lon mirrors the cloud, and projected
+ * metres throw everything off-world.
+ */
+export interface MapPreview {
+  /** [lon, lat] pairs, subsampled for large datasets. */
+  points: Array<[number, number]>;
+  /** Positions examined before sampling. */
+  total: number;
+  /** Positions that were not finite numbers at all. */
+  invalid: number;
+  /** Finite positions outside the WGS84 domain. */
+  outOfRange: number;
+  /** Bounds of the in-range points, or null when there are none. */
+  bbox: [number, number, number, number] | null;
+}
+
 export interface GeneratedFile {
   filename: string;
   mime: string;
@@ -100,6 +119,7 @@ export interface GeneratedFile {
   previewTruncated: boolean;
   /** What the generator did, and what the chosen format silently dropped. */
   notes: string[];
+  map: MapPreview;
   stats: {
     features: number;
     problems: string[];

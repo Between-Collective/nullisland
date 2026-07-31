@@ -1,44 +1,62 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0a0b0d;
-  --color-panel: #101216;
-  --color-raised: #171a1f;
-  --color-line: #23272e;
-  --color-line-soft: #1a1d23;
-  --color-ink: #e9ebee;
-  --color-muted: #8d949e;
-  --color-dim: #5b626c;
-  --color-accent: #ff6b35;
-  --color-accent-soft: #3a1d10;
+  /* Core surfaces: a tinted shell, a white card sitting on it, and mint as the
+     one signature colour that marks anything generated. */
+  --color-shell: #e3e5ea;
+  --color-card: #ffffff;
+  --color-paper: #fafafa;
+  --color-mint: #ecf4ee;
+  --color-mint-deep: #dae7de;
+  --color-mint-ink: #2f5c42;
 
-  --color-cat-coordinates: #6ea8fe;
-  --color-cat-geometry: #6ee7a8;
-  --color-cat-attributes: #ffb86b;
-  --color-cat-structure: #c792ea;
-  --color-cat-encoding: #ff7b72;
+  --color-ink: #0c0d0d;
+  --color-ink-soft: #35383a;
+  --color-muted: #6b7075;
+  --color-dim: #9aa0a6;
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-line: #ebecef;
+  --color-line-strong: #dcdee3;
+
+  /* Category marks. Muted enough to sit together, distinct enough to scan. */
+  --color-cat-coordinates: #3b6ef5;
+  --color-cat-geometry: #12946a;
+  --color-cat-attributes: #c07216;
+  --color-cat-structure: #7a56d4;
+  --color-cat-encoding: #d4443e;
+
+  --color-warn: #e0821f;
+  --color-good: #12946a;
+
+  --font-sans: var(--font-host), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-card: 22px;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background: var(--color-bg);
+  background: var(--color-shell);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: var(--color-accent);
-  color: #0a0b0d;
+  background: var(--color-ink);
+  color: #fff;
 }
 
-/* Range inputs need explicit styling in both engines to look like one control. */
+/* Display numerals: tight, tabular, and optically aligned like the reference. */
+.display-figure {
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+
 input[type="range"] {
   appearance: none;
   background: transparent;
@@ -46,44 +64,45 @@ input[type="range"] {
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
-  height: 2px;
-  background: var(--color-line);
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-line-strong);
 }
 
 input[type="range"]::-moz-range-track {
-  height: 2px;
-  background: var(--color-line);
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-line-strong);
 }
 
 input[type="range"]::-webkit-slider-thumb {
   appearance: none;
-  height: 14px;
-  width: 14px;
+  height: 15px;
+  width: 15px;
   margin-top: -6px;
   border-radius: 999px;
-  background: var(--color-accent);
+  background: var(--color-ink);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px var(--color-line-strong);
 }
 
 input[type="range"]::-moz-range-thumb {
-  height: 14px;
-  width: 14px;
-  border: 0;
+  height: 15px;
+  width: 15px;
   border-radius: 999px;
-  background: var(--color-accent);
-}
-
-input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px var(--color-accent-soft);
+  background: var(--color-ink);
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px var(--color-line-strong);
 }
 
 *:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-ink);
   outline-offset: 2px;
 }
 
 .scroll-thin {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-line) transparent;
+  scrollbar-color: var(--color-line-strong) transparent;
 }
 
 .scroll-thin::-webkit-scrollbar {
@@ -92,7 +111,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
 }
 
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: var(--color-line);
+  background: var(--color-line-strong);
   border-radius: 999px;
   border: 3px solid transparent;
   background-clip: content-box;

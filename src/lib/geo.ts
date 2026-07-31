@@ -130,6 +130,12 @@ export function toWebMercator(lon: number, lat: number): [number, number] {
   return [round(x, 3), round(y, 3)];
 }
 
+/** Wraps longitude into [-180, 180). Crossing the antimeridian wraps, it does not clamp. */
+export function wrapLon(lon: number): number {
+  if (!Number.isFinite(lon)) return lon;
+  return ((((lon + 180) % 360) + 360) % 360) - 180;
+}
+
 export function round(value: number, decimals: number): number {
   if (!Number.isFinite(value)) return value;
   const factor = 10 ** decimals;

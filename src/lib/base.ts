@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { closeRing, round } from "./geo";
+import { closeRing, round, wrapLon } from "./geo";
 import { getRegion, REGIONS, type Region } from "./regions";
 import type { Rng } from "./rng";
 import type { Dataset, Feature, GenerateOptions, Geometry, Position } from "./types";
@@ -39,8 +39,10 @@ function anchorFor(rng: Rng, region: Region): [number, number, number] {
 
 function scatter(rng: Rng, region: Region): Position {
   const [lon, lat, spread] = anchorFor(rng, region);
+  // Both ordinates are brought back into the WGS84 domain. With no problems
+  // selected the output has to be a valid file — that is the control case.
   return [
-    round(lon + rng.gaussian(0, spread), 6),
+    round(wrapLon(lon + rng.gaussian(0, spread)), 6),
     round(clampLat(lat + rng.gaussian(0, spread * 0.7)), 6),
   ];
 }
@@ -57,7 +59,7 @@ function makeLineString(rng: Rng, origin: Position, spread: number): Position[] 
   for (let i = 1; i < vertices; i++) {
     heading += rng.float(-0.6, 0.6);
     const step = spread * rng.float(0.05, 0.25);
-    lon = round(lon + Math.cos(heading) * step, 6);
+    lon = round(wrapLon(lon + Math.cos(heading) * step), 6);
     lat = round(clampLat(lat + Math.sin(heading) * step * 0.7), 6);
     line.push([lon, lat]);
   }
@@ -74,7 +76,7 @@ function makePolygonRing(rng: Rng, origin: Position, spread: number): Position[]
     const angle = (i / sides) * Math.PI * 2;
     const wobble = radius * rng.float(0.65, 1.35);
     ring.push([
-      round(cx + Math.cos(angle) * wobble, 6),
+      round(wrapLon(cx + Math.cos(angle) * wobble), 6),
       round(clampLat(cy + Math.sin(angle) * wobble * 0.7), 6),
     ]);
   }

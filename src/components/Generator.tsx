@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { HeroPanel } from "./HeroPanel";
 import { OutputPanel } from "./OutputPanel";
 import { ProblemGrid } from "./ProblemGrid";
-import { Button, Field, Panel, Segmented, type Option } from "./ui";
-import { FORMATS, getFormat } from "@/lib/formats/index";
+import { Sidebar } from "./Sidebar";
+import { Button, Card } from "./ui";
+import { copyFile, downloadFile } from "@/lib/download";
+import { FORMATS } from "@/lib/formats/index";
 import { generate, MAX_FEATURES } from "@/lib/generate";
 import { appliesTo, PROBLEMS } from "@/lib/problems";
 import { REGIONS } from "@/lib/regions";
@@ -16,19 +19,7 @@ const COUNT_STEPS = [
   0, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, MAX_FEATURES,
 ];
 
-const SHAPE_OPTIONS: Option<ShapeId>[] = [
-  { value: "point", label: "Points" },
-  { value: "line", label: "Lines" },
-  { value: "polygon", label: "Polygons" },
-  { value: "mixed", label: "Mixed" },
-];
-
-const FORMAT_OPTIONS: Option<FormatId>[] = FORMATS.map((f) => ({
-  value: f.id,
-  label: f.label,
-  hint: f.blurb,
-}));
-
+const SHAPES: ShapeId[] = ["point", "line", "polygon", "mixed"];
 const JSON_FORMATS: FormatId[] = ["geojson", "ndjson", "topojson"];
 
 /**
@@ -72,6 +63,7 @@ interface Result {
 export function Generator() {
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULTS);
   const [result, setResult] = useState<Result>({ source: null, file: null, error: null });
+  const [flash, setFlash] = useState<string | null>(null);
   const hydrated = useRef(false);
 
   // Derived rather than stored: anything not yet generated from the current
@@ -121,11 +113,16 @@ export function Generator() {
     return () => clearTimeout(timer);
   }, [opts]);
 
-  // Keep the address bar in sync without stacking up history entries.
   useEffect(() => {
     if (!hydrated.current) return;
     window.history.replaceState(null, "", `#${encodeConfig(opts)}`);
   }, [opts]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const timer = setTimeout(() => setFlash(null), 1800);
+    return () => clearTimeout(timer);
+  }, [flash]);
 
   const toggleProblem = useCallback((id: string) => {
     setOpts((current) => ({
@@ -152,7 +149,7 @@ export function Generator() {
     setOpts({
       format,
       count: randomFrom(COUNT_STEPS.slice(3, 11)),
-      shape: randomFrom(SHAPE_OPTIONS).value,
+      shape: randomFrom(SHAPES),
       region: randomFrom(REGIONS).id,
       problems: pool.sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 7)),
       intensity: 0.2 + Math.random() * 0.6,
@@ -161,176 +158,105 @@ export function Generator() {
     });
   };
 
-  const shareCurrent = useCallback(async () => {
+  const share = async () => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#${encodeConfig(opts)}`);
-      return true;
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${window.location.pathname}#${encodeConfig(opts)}`,
+      );
+      setFlash("Link copied");
     } catch {
-      return false;
+      setFlash("Copy blocked");
     }
-  }, [opts]);
+  };
 
-  const format = getFormat(opts.format);
-  const selectedCount = opts.problems.length;
-  const skipped = opts.problems.filter((id) => {
-    const problem = PROBLEMS.find((p) => p.id === id);
-    return problem && !appliesTo(problem, opts.format);
-  }).length;
+  const copy = async () => {
+    if (!file) return;
+    setFlash((await copyFile(file)) ? "File copied" : "Copy blocked");
+  };
+
+  const download = () => {
+    if (!file) return;
+    downloadFile(file);
+    setFlash("Saved");
+  };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] lg:items-start">
-      <div className="order-2 space-y-4 lg:order-1">
-        <Panel className="p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-ink">Settings</h2>
-            <Button onClick={randomiseEverything} title="Randomise every setting at once">
-              Randomise everything
+    /* Output first on a phone — the file and its Download are the point, and
+       the settings column is long. Side by side from lg up, sidebar leading. */
+    <div className="grid lg:grid-cols-[292px_minmax(0,1fr)]">
+      <Sidebar
+        opts={opts}
+        patch={patch}
+        countSteps={COUNT_STEPS}
+        countIndex={closestStep(opts.count)}
+        onRandomise={randomiseEverything}
+      />
+
+      <main className="order-1 min-w-0 bg-paper p-4 sm:p-5 lg:order-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <label className="flex w-full min-w-0 items-center gap-2 rounded-full border border-line-strong bg-card px-3.5 py-2 sm:w-auto sm:flex-1">
+            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">seed</span>
+            <input
+              value={opts.seed}
+              onChange={(e) => patch({ seed: e.target.value.slice(0, 40) })}
+              spellCheck={false}
+              aria-label="Seed"
+              placeholder="anything reproducible"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-ink outline-none placeholder:text-dim"
+            />
+          </label>
+
+          <span
+            aria-live="polite"
+            className="min-w-[72px] font-mono text-[11px] text-muted"
+          >
+            {busy ? "working…" : (flash ?? "")}
+          </span>
+
+          {JSON_FORMATS.includes(opts.format) && (
+            <Button
+              onClick={() => patch({ pretty: !opts.pretty })}
+              active={opts.pretty}
+              title="Toggle pretty-printed JSON"
+            >
+              Pretty print
             </Button>
-          </div>
+          )}
+          <Button onClick={() => patch({ seed: randomSeed() })} title="New random seed">
+            New seed
+          </Button>
+          <Button onClick={share} title="Copy a link that reproduces this exact file">
+            Share
+          </Button>
+        </div>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Field label="Format" value={`.${format.ext}`}>
-                <Segmented
-                  ariaLabel="Output format"
-                  options={FORMAT_OPTIONS}
-                  value={opts.format}
-                  onChange={(value) => patch({ format: value })}
-                />
-              </Field>
-              <p className="mt-2 text-[11.5px] leading-snug text-muted">{format.blurb}</p>
-            </div>
-
-            <Field label="Features" value={opts.count.toLocaleString()}>
-              <input
-                type="range"
-                min={0}
-                max={COUNT_STEPS.length - 1}
-                step={1}
-                value={closestStep(opts.count)}
-                onChange={(e) => patch({ count: COUNT_STEPS[Number(e.target.value)] })}
-                aria-label="Number of features"
-                className="w-full"
-              />
-            </Field>
-
-            <Field label="Chaos" value={`${Math.round(opts.intensity * 100)}%`}>
-              <input
-                type="range"
-                min={5}
-                max={100}
-                step={5}
-                value={Math.round(opts.intensity * 100)}
-                onChange={(e) => patch({ intensity: Number(e.target.value) / 100 })}
-                aria-label="How much of the data each problem affects"
-                className="w-full"
-              />
-            </Field>
-
-            <Field label="Geometry">
-              <Segmented
-                ariaLabel="Geometry type"
-                options={SHAPE_OPTIONS}
-                value={opts.shape}
-                onChange={(value) => patch({ shape: value })}
-              />
-            </Field>
-
-            <Field label="Where">
-              <select
-                value={opts.region}
-                onChange={(e) => patch({ region: e.target.value })}
-                aria-label="Region"
-                className="w-full rounded-md border border-line bg-raised px-2.5 py-2 text-xs text-ink"
-              >
-                {REGIONS.map((region) => (
-                  <option key={region.id} value={region.id}>
-                    {region.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Seed">
-              <div className="flex gap-1.5">
-                <input
-                  value={opts.seed}
-                  onChange={(e) => patch({ seed: e.target.value.slice(0, 40) })}
-                  spellCheck={false}
-                  aria-label="Seed"
-                  className="min-w-0 flex-1 rounded-md border border-line bg-raised px-2.5 py-2 font-mono text-xs text-ink"
-                />
-                <Button onClick={() => patch({ seed: randomSeed() })} title="New random seed">
-                  ↻
-                </Button>
-              </div>
-            </Field>
-
-            {JSON_FORMATS.includes(opts.format) && (
-              <Field label="Options">
-                <Button
-                  onClick={() => patch({ pretty: !opts.pretty })}
-                  title="Toggle pretty-printed JSON"
-                  active={opts.pretty}
-                >
-                  Pretty print
-                </Button>
-              </Field>
-            )}
-          </div>
-        </Panel>
-
-        <Panel className="p-4 sm:p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-medium text-ink">Problems</h2>
-              <p className="mt-0.5 font-mono text-[11px] text-dim">
-                {selectedCount} selected
-                {skipped > 0 && ` · ${skipped} not supported by ${format.label}`}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <Button onClick={() => pickRandomProblems(1)} title="Pick exactly one at random">
-                Random 1
-              </Button>
-              <Button
-                onClick={() => pickRandomProblems(3 + Math.floor(Math.random() * 6))}
-                title="Pick a random handful"
-              >
-                Random mix
-              </Button>
-              <Button
-                onClick={() =>
-                  patch({
-                    problems: applicable.filter((p) => p.id !== EXCLUSIVE).map((p) => p.id),
-                  })
-                }
-                title="Everything this format supports, except the empty-result case"
-              >
-                All
-              </Button>
-              <Button variant="quiet" onClick={() => patch({ problems: [] })}>
-                None
-              </Button>
-            </div>
-          </div>
-
-          <ProblemGrid selected={opts.problems} format={opts.format} onToggle={toggleProblem} />
-        </Panel>
-      </div>
-
-      <div className="order-1 lg:sticky lg:top-4 lg:order-2">
         {error ? (
-          <Panel className="p-4">
-            <p className="text-xs text-cat-encoding">Generation failed: {error}</p>
-            <p className="mt-2 text-[11px] text-muted">
+          <Card className="p-5">
+            <p className="text-[13px] text-cat-encoding">Generation failed: {error}</p>
+            <p className="mt-2 text-[12px] text-muted">
               That is a bug in map/data, not in your settings. Lower the feature count and try again.
             </p>
-          </Panel>
+          </Card>
         ) : (
-          <OutputPanel file={file} busy={busy} onShare={shareCurrent} />
+          <div className="space-y-3">
+            <HeroPanel file={file} busy={busy} onDownload={download} onCopy={copy} />
+            <OutputPanel file={file} />
+          </div>
         )}
-      </div>
+
+        <div className="mt-8">
+          <ProblemGrid
+            selected={opts.problems}
+            format={opts.format}
+            onToggle={toggleProblem}
+            onPickRandom={pickRandomProblems}
+            onSelectAll={() =>
+              patch({ problems: applicable.filter((p) => p.id !== EXCLUSIVE).map((p) => p.id) })
+            }
+            onClear={() => patch({ problems: [] })}
+          />
+        </div>
+      </main>
     </div>
   );
 }

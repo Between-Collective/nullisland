@@ -365,6 +365,39 @@ console.log("\n5. targeted behaviour");
   ok("gpx notes polygon flattening", file.notes.some((n) => n.includes("no polygon type")));
 }
 
+/* ── 5b. the clean control case must be valid WGS84 everywhere ───────────── */
+console.log("\n5b. clean output stays inside the WGS84 domain");
+for (const region of ["world", "fiji", "svalbard", "reykjavik", "london", "auckland"]) {
+  for (const shape of ["point", "line", "polygon", "mixed"] as const) {
+    const file = generate(opts({ format: "geojson", region, shape, count: 400, problems: [], seed: "wgs84" }));
+    const bad = file.map.outOfRange + file.map.invalid;
+    ok(`clean ${region}/${shape} in range`, bad === 0, `${bad} of ${file.map.total} off-world`);
+  }
+}
+
+/* ── 5c. the map preview reflects what the problems actually did ─────────── */
+console.log("\n5c. map preview");
+{
+  const file = generate(opts({ format: "geojson", shape: "point", count: 500, intensity: 1, problems: ["coincident"], seed: "mp" }));
+  const key = (p: [number, number]) => p.join(",");
+  const freq = new Map<string, number>();
+  for (const p of file.map.points) freq.set(key(p), (freq.get(key(p)) ?? 0) + 1);
+  ok("coincident collapses the plotted points", Math.max(...freq.values()) === file.map.points.length);
+}
+{
+  const file = generate(opts({ format: "geojson", shape: "point", count: 300, intensity: 0.5, problems: ["out-of-range"], seed: "mp" }));
+  ok("out-of-range counted as off-world", file.map.outOfRange > 0);
+}
+{
+  const file = generate(opts({ format: "geojson", shape: "point", count: 300, intensity: 0.5, problems: ["nan-coords"], seed: "mp" }));
+  ok("nan coords counted as invalid", file.map.invalid > 0);
+}
+{
+  const file = generate(opts({ format: "geojson", shape: "line", count: 40000, problems: ["vertex-bomb"], seed: "mp" }));
+  ok("map preview is subsampled", file.map.points.length <= 1600, `${file.map.points.length}`);
+  ok("map preview still counts every position", file.map.total > 100000, `${file.map.total}`);
+}
+
 /* ── 6. scale ────────────────────────────────────────────────────────────── */
 console.log("\n6. scale");
 for (const [format, count] of [["geojson", 100000], ["shapefile", 50000], ["csv", 100000]] as const) {

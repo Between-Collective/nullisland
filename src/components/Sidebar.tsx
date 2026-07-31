@@ -1,0 +1,174 @@
+"use client";
+
+import { Wordmark } from "./Logo";
+import { Button, Field, Segmented, type Option } from "./ui";
+import { FORMATS } from "@/lib/formats/index";
+import { REGIONS } from "@/lib/regions";
+import type { FormatId, GenerateOptions, ShapeId } from "@/lib/types";
+
+const SHAPE_OPTIONS: Option<ShapeId>[] = [
+  { value: "point", label: "Points" },
+  { value: "line", label: "Lines" },
+  { value: "polygon", label: "Polygons" },
+  { value: "mixed", label: "Mixed" },
+];
+
+function FormatTile({
+  id,
+  label,
+  ext,
+  hint,
+  active,
+  wide,
+  onSelect,
+}: {
+  id: FormatId;
+  label: string;
+  ext: string;
+  hint: string;
+  active: boolean;
+  wide?: boolean;
+  onSelect: (id: FormatId) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      title={hint}
+      onClick={() => onSelect(id)}
+      className={[
+        "rounded-2xl border px-3 text-left transition-colors",
+        wide ? "py-4" : "py-3.5",
+        active
+          ? "border-ink bg-ink text-white"
+          : "border-line-strong bg-white text-ink hover:border-dim",
+      ].join(" ")}
+    >
+      <span className="block text-[13px] font-semibold tracking-tight">{label}</span>
+      <span
+        className={`mt-0.5 block font-mono text-[10.5px] ${active ? "text-white/55" : "text-dim"}`}
+      >
+        .{ext}
+      </span>
+    </button>
+  );
+}
+
+export function Sidebar({
+  opts,
+  patch,
+  countSteps,
+  countIndex,
+  onRandomise,
+}: {
+  opts: GenerateOptions;
+  patch: (next: Partial<GenerateOptions>) => void;
+  countSteps: number[];
+  countIndex: number;
+  onRandomise: () => void;
+}) {
+  const [lead, ...rest] = FORMATS;
+
+  return (
+    <aside className="order-2 flex flex-col gap-6 border-line bg-card p-4 sm:p-5 lg:order-1 lg:h-full lg:border-r">
+      <div className="flex items-center justify-between">
+        <Wordmark />
+      </div>
+
+      {/* One prominent tile plus a grid, echoing a primary nav. */}
+      <div role="radiogroup" aria-label="Output format" className="space-y-2">
+        <span className="block text-[10.5px] font-semibold uppercase tracking-[0.13em] text-dim">
+          Format
+        </span>
+        <FormatTile
+          id={lead.id}
+          label={lead.label}
+          ext={lead.ext}
+          hint={lead.blurb}
+          active={opts.format === lead.id}
+          wide
+          onSelect={(id) => patch({ format: id })}
+        />
+        {/* Tighter on small screens, where nine tiles would otherwise run on. */}
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-2">
+          {rest.map((format) => (
+            <FormatTile
+              key={format.id}
+              id={format.id}
+              label={format.label}
+              ext={format.ext}
+              hint={format.blurb}
+              active={opts.format === format.id}
+              onSelect={(id) => patch({ format: id })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-5 border-t border-line pt-5">
+        <Field label="Features" value={opts.count.toLocaleString()}>
+          <input
+            type="range"
+            min={0}
+            max={countSteps.length - 1}
+            step={1}
+            value={countIndex}
+            onChange={(e) => patch({ count: countSteps[Number(e.target.value)] })}
+            aria-label="Number of features"
+            className="w-full"
+          />
+        </Field>
+
+        <Field label="Chaos" value={`${Math.round(opts.intensity * 100)}%`}>
+          <input
+            type="range"
+            min={5}
+            max={100}
+            step={5}
+            value={Math.round(opts.intensity * 100)}
+            onChange={(e) => patch({ intensity: Number(e.target.value) / 100 })}
+            aria-label="How much of the data each problem affects"
+            className="w-full"
+          />
+        </Field>
+
+        <Field label="Geometry">
+          <Segmented
+            ariaLabel="Geometry type"
+            options={SHAPE_OPTIONS}
+            value={opts.shape}
+            onChange={(value) => patch({ shape: value })}
+          />
+        </Field>
+
+        <Field label="Where">
+          <select
+            value={opts.region}
+            onChange={(e) => patch({ region: e.target.value })}
+            aria-label="Region"
+            className="w-full rounded-full border border-line-strong bg-white px-3.5 py-2 text-[12px] text-ink"
+          >
+            {REGIONS.map((region) => (
+              <option key={region.id} value={region.id}>
+                {region.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <div className="mt-auto rounded-2xl bg-mint p-4">
+        <p className="text-[13px] font-semibold leading-snug tracking-tight text-ink">
+          Feeling destructive?
+        </p>
+        <p className="mt-1 text-[11.5px] leading-snug text-mint-ink/75">
+          Roll a new format, size, place and problem set in one go.
+        </p>
+        <Button variant="primary" onClick={onRandomise} className="mt-3 w-full">
+          Randomise everything
+        </Button>
+      </div>
+    </aside>
+  );
+}

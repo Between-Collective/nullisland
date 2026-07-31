@@ -1,5 +1,6 @@
 import { buildBase } from "./base";
 import { utf8 } from "./bytes";
+import { forEachPosition } from "./geo";
 import { writeCSV } from "./formats/csv";
 import { getFormat } from "./formats/index";
 import { writeGeoJSON, writeNDJSON, writeTopoJSON } from "./formats/json";
@@ -10,7 +11,7 @@ import { applyProblems } from "./mutate";
 import { appliesTo, getProblem } from "./problems";
 import { Rng } from "./rng";
 import { addBom, injectNanLiterals, malformJson, mixLineEndings, mojibakeStrings } from "./text";
-import type { Dataset, GenerateOptions, GeneratedFile } from "./types";
+import type { Dataset, GenerateOptions, GeneratedFile, MapPreview } from "./types";
 import { makeZip, type ZipEntry } from "./zip";
 
 const PREVIEW_LINES = 400;
@@ -88,6 +89,62 @@ function hexdump(bytes: Uint8Array, limit = 256): string {
   return lines.join("\n");
 }
 
+const MAP_SAMPLE_LIMIT = 1600;
+
+/**
+ * Walks every position once, keeping an evenly-spread sample. Counting invalid
+ * and out-of-range positions here (rather than filtering them out) is the
+ * point: "412 positions are off-world" is exactly what the user needs to see.
+ */
+function buildMapPreview(ds: Dataset): MapPreview {
+  const all: Array<[number, number]> = [];
+  let total = 0;
+  let invalid = 0;
+  let outOfRange = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const feature of ds.features) {
+    forEachPosition(feature.geometry, (pos) => {
+      total++;
+      const lon = Number(pos[0]);
+      const lat = Number(pos[1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        invalid++;
+        return;
+      }
+      if (Math.abs(lon) > 180 || Math.abs(lat) > 90) {
+        outOfRange++;
+        return;
+      }
+      minX = Math.min(minX, lon);
+      maxX = Math.max(maxX, lon);
+      minY = Math.min(minY, lat);
+      maxY = Math.max(maxY, lat);
+      all.push([lon, lat]);
+    });
+  }
+
+  // Even stride rather than head-truncation, so a vertex bomb or a trailing
+  // cluster still shows up in the plot.
+  let points = all;
+  if (all.length > MAP_SAMPLE_LIMIT) {
+    const stride = all.length / MAP_SAMPLE_LIMIT;
+    points = [];
+    for (let i = 0; i < MAP_SAMPLE_LIMIT; i++) points.push(all[Math.floor(i * stride)]);
+  }
+
+  return {
+    points,
+    total,
+    invalid,
+    outOfRange,
+    bbox: Number.isFinite(minX) ? [minX, minY, maxX, maxY] : null,
+  };
+}
+
 function truncate(text: string): { preview: string; truncated: boolean } {
   const lines = text.split("\n");
   let clipped = false;
@@ -125,6 +182,10 @@ export function generate(options: GenerateOptions): GeneratedFile {
 
   const ds = buildBase(opts, rng);
   applyProblems(ds, dataIds, opts, rng);
+
+  // Sampled before serialisation, so it reflects the mutated geometry itself
+  // rather than whatever a lossy format was able to keep.
+  const map = buildMapPreview(ds);
 
   if (skipped.length) {
     ds.notes.push(
@@ -185,6 +246,7 @@ export function generate(options: GenerateOptions): GeneratedFile {
     preview,
     previewTruncated,
     notes: ds.notes,
+    map,
     stats: { features: ds.features.length, problems: usable },
   };
 }

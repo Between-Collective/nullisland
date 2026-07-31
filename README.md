@@ -14,6 +14,17 @@ The interesting bugs in map software are almost never in the happy path. They're
 
 So: generate them. Every file is produced from a **seed**, so the same seed always yields byte-identical output. When a fixture breaks something, drop the seed and settings into your test suite and it will reproduce exactly.
 
+## Seeing it
+
+The generated geometry is plotted as you build it, so a problem is something you watch happen rather than read about:
+
+- **Everything on one point** collapses the cloud into a single weighted dot — marks are sized by how many positions stacked there, so five overlapping points and five hundred don't look the same.
+- **Swapped lat/lon** flips the cloud into the wrong hemisphere.
+- **Out-of-range values** and **null/NaN coordinates** are counted as off-world rather than quietly dropped, with the edge of the valid WGS84 domain drawn in.
+- **Global outliers** blow the bounding box out to the whole planet — exactly what fit-to-bounds will do to your viewport.
+
+Toggle between **Fit** (the data's own bounds) and **World** to see whether the data is in the wrong place or merely the wrong shape.
+
 ## Formats
 
 | Format | Extension | Notes |
@@ -88,6 +99,8 @@ file.data;     // string, or Uint8Array for KMZ and shapefiles
 file.notes;    // what was done, and what the format silently dropped
 ```
 
+`generate()` also returns a `map` field — a sampled, bounded view of where the geometry landed, with counts of invalid and out-of-range positions. That's what the plot draws, and it's useful on its own for assertions.
+
 Layout:
 
 - `lib/base.ts` — builds a clean, well-formed dataset
@@ -101,6 +114,10 @@ Adding a problem means adding a catalogue entry and one transform function.
 ## Sharing a fixture
 
 The full configuration lives in the URL hash, so every file you generate has a link that reproduces it exactly. The **Share** button copies it.
+
+## Design
+
+Host Grotesk, a near-black `#0C0D0D`, and a single signature mint `#ECF4EE` that marks anything generated. Light only — it's a daytime tool. Tokens live in `src/app/globals.css`; there are no component libraries and no CSS beyond Tailwind utilities.
 
 ## Publishing
 
