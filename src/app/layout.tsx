@@ -5,14 +5,15 @@ import "./globals.css";
 const host = Host_Grotesk({ variable: "--font-host", subsets: ["latin"] });
 const mono = Geist_Mono({ variable: "--font-mono-face", subsets: ["latin"] });
 
-const title = "map/data — broken geospatial test fixtures";
+const title = "Null Island — broken geospatial test fixtures";
 const description =
   "Generate deliberately broken map files — GeoJSON, KML, KMZ, GPX, CSV, WKT, TopoJSON, Shapefile — to test how your map handles the edge cases before your users find them.";
 
 export const metadata: Metadata = {
   title,
   description,
-  applicationName: "map/data",
+  applicationName: "Null Island",
+  metadataBase: new URL("https://nullisland.app"),
   keywords: [
     "geojson", "test data", "fixtures", "shapefile", "kml", "gpx",
     "topojson", "wkt", "geospatial", "map testing", "edge cases",

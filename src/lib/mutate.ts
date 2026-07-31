@@ -637,7 +637,7 @@ const wrongBbox: Transform = (ctx) => {
 };
 
 const foreignMembers: Transform = (ctx) => {
-  ctx.ds.extras.generator = "map/data";
+  ctx.ds.extras.generator = "nullisland";
   ctx.ds.extras.totalFeatures = ctx.ds.features.length + ctx.rng.int(1, 50);
   ctx.ds.extras.links = [{ rel: "self", href: "https://example.invalid/items" }];
   for (const i of targets(ctx, Math.max(ctx.share, 0.4))) {

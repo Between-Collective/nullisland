@@ -91,7 +91,7 @@ export function writeKML(ds: Dataset): string {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<kml xmlns="http://www.opengis.net/kml/2.2">',
     "  <Document>",
-    "    <name>map/data fixture</name>",
+    "    <name>Null Island fixture</name>",
   ];
 
   let overWide = false;
@@ -172,7 +172,7 @@ function trkpt(pos: any[], indent: string): string {
 export function writeGPX(ds: Dataset): string {
   const out: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<gpx version="1.1" creator="map/data" xmlns="http://www.topografix.com/GPX/1/1" xmlns:md="https://map-data.dev/gpx/1">',
+    '<gpx version="1.1" creator="Null Island" xmlns="http://www.topografix.com/GPX/1/1" xmlns:md="https://nullisland.app/gpx/1">',
   ];
 
   const waypoints: string[] = [];

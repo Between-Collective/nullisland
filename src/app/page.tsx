@@ -6,8 +6,10 @@ export default function Home() {
     <div className="min-h-full p-3 sm:p-5">
       <div className="mx-auto max-w-[1560px]">
         <header className="px-2 pb-4 pt-2 sm:px-3">
+          {/* The coordinates carry the name: 0°N 0°E is where every record with
+              missing coordinates quietly ends up. */}
           <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-            Test fixtures for map software
+            0°N 0°E · Test fixtures for map software
           </p>
           <h1 className="mt-2 text-[26px] font-bold leading-[1.12] tracking-[-0.03em] text-ink sm:text-[34px]">
             Break your map before your users do.

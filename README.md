@@ -1,12 +1,14 @@
-# map/data
+# Null Island
 
 **Generate deliberately broken geospatial files, so you can find out how your map handles them before your users do.**
 
 Every geo-viz tool says "bring us whatever you've got". Then a file arrives with every point stacked on one lat/lon, coordinates in metres, a BOM at byte zero, and half the rows missing a geometry.
 
-map/data generates those files on purpose. Pick a format, pick a size, pick which problems to bake in — or randomise it — and download a fixture.
+Null Island generates those files on purpose. Pick a format, pick a size, pick which problems to bake in — or randomise it — and download a fixture.
 
 Everything runs in the browser. Nothing is uploaded, nothing is stored, and the whole thing builds to static files.
+
+*Null Island is 0°N 0°E, in the Gulf of Guinea — the spot every record with missing or zeroed coordinates quietly lands on. It is the most-visited place on Earth that does not exist.*
 
 ## Why bother
 
@@ -72,7 +74,7 @@ To check everything:
 npm run check
 ```
 
-That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 487 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, and determinism.
+That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 526 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, and determinism.
 
 `npm run build` produces a fully static site in `out/`, deployable to any static host.
 
@@ -90,11 +92,11 @@ const file = generate({
   region: "london",
   problems: ["coincident", "precision-drift", "mixed-schema"],
   intensity: 0.4,
-  seed: "a7f2k9",
+  seed: "harbor-lantern-drift",
   pretty: true,
 });
 
-file.filename; // "mapdata-500-a7f2k9.geojson"
+file.filename; // "nullisland-500-harbor-lantern-drift.geojson"
 file.data;     // string, or Uint8Array for KMZ and shapefiles
 file.notes;    // what was done, and what the format silently dropped
 ```

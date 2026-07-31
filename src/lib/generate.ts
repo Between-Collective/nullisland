@@ -195,7 +195,7 @@ export function generate(options: GenerateOptions): GeneratedFile {
     );
   }
 
-  const base = `mapdata-${ds.features.length}-${opts.seed}`;
+  const base = `nullisland-${ds.features.length}-${opts.seed}`;
   const filename = `${base}.${format.ext}`;
 
   let data: string | Uint8Array;

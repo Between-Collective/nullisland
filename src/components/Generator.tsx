@@ -243,7 +243,7 @@ export function Generator() {
           <Card className="p-5">
             <p className="text-[13px] text-cat-encoding">Generation failed: {error}</p>
             <p className="mt-2 text-[12px] text-muted">
-              That is a bug in map/data, not in your settings. Lower the feature count and try again.
+              That is a bug in Null Island, not in your settings. Lower the feature count and try again.
             </p>
           </Card>
         ) : (
