@@ -116,3 +116,21 @@ input[type="range"]::-moz-range-thumb {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+
+/* Same bar, for the dark paste block. */
+.scroll-thin-dark {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.scroll-thin-dark::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scroll-thin-dark::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}

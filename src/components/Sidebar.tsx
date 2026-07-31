@@ -1,7 +1,7 @@
 "use client";
 
 import { Wordmark } from "./Logo";
-import { Button, Field, Segmented, type Option } from "./ui";
+import { Field, Segmented, type Option } from "./ui";
 import { FORMATS } from "@/lib/formats/index";
 import { REGIONS } from "@/lib/regions";
 import type { FormatId, GenerateOptions, ShapeId } from "@/lib/types";
@@ -60,13 +60,11 @@ export function Sidebar({
   patch,
   countSteps,
   countIndex,
-  onRandomise,
 }: {
   opts: GenerateOptions;
   patch: (next: Partial<GenerateOptions>) => void;
   countSteps: number[];
   countIndex: number;
-  onRandomise: () => void;
 }) {
   const [lead, ...rest] = FORMATS;
 
@@ -158,17 +156,6 @@ export function Sidebar({
         </Field>
       </div>
 
-      <div className="mt-auto rounded-2xl bg-mint p-4">
-        <p className="text-[13px] font-semibold leading-snug tracking-tight text-ink">
-          Feeling destructive?
-        </p>
-        <p className="mt-1 text-[11.5px] leading-snug text-mint-ink/75">
-          Roll a new format, size, place and problem set in one go.
-        </p>
-        <Button variant="primary" onClick={onRandomise} className="mt-3 w-full">
-          Randomise everything
-        </Button>
-      </div>
     </aside>
   );
 }

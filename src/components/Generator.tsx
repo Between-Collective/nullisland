@@ -189,7 +189,6 @@ export function Generator() {
         patch={patch}
         countSteps={COUNT_STEPS}
         countIndex={closestStep(opts.count)}
-        onRandomise={randomiseEverything}
       />
 
       <main className="order-1 min-w-0 bg-paper p-4 sm:p-5 lg:order-2">
@@ -224,6 +223,12 @@ export function Generator() {
           )}
           <Button onClick={() => patch({ seed: randomSeed() })} title="New random seed">
             New seed
+          </Button>
+          <Button
+            onClick={randomiseEverything}
+            title="Roll a new format, size, place and problem set in one go"
+          >
+            Randomise everything
           </Button>
           <Button onClick={share} title="Copy a link that reproduces this exact file">
             Share

@@ -4,5 +4,5 @@
  */
 export const REPO_URL = "";
 
-export const CREDIT = "Between Collective";
-export const CREDIT_URL = "https://betweencollective.com";
+export const CREDIT = "bcagency.io";
+export const CREDIT_URL = "https://bcagency.io";
