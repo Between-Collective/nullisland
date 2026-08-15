@@ -571,6 +571,85 @@ console.log("\n5e. boundaries");
   }
 }
 
+/* ── 5f. the seed is untrusted input on its way to a path ────────────────── */
+console.log("\n5f. hostile seeds");
+{
+  // A seed arrives from the URL hash and reaches both the download filename and
+  // the entry names inside a generated ZIP. Left raw, `../` there is a zip-slip.
+  const HOSTILE: Array<[string, string]> = [
+    ["posix traversal", "../../../../tmp/pwned"],
+    ["windows traversal", "..\\..\\windows\\evil"],
+    ["absolute path", "/etc/passwd"],
+    ["bidi override", "photo‮gpj.exe"],
+    ["null byte", "evil .exe"],
+    ["crlf", "a\r\nContent-Type: text/html"],
+    ["ansi escape", "a[31mred"],
+    ["script tag", "<script>alert(1)</script>"],
+    ["quote break", '" onmouseover="alert(1)'],
+    ["dot only", "..."],
+    ["leading dash", "-rf"],
+    ["empty", ""],
+    ["all stripped", "   "],
+    ["very long", "z".repeat(500)],
+  ];
+
+  const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+  for (const [label, seed] of HOSTILE) {
+    const file = generate(opts({ seed, count: 3, shape: "point", boundary: "bbox" }));
+
+    ok(`${label}: filename has no separators`, !/[\/\\]/.test(file.filename), file.filename);
+    ok(`${label}: filename has no control chars`, !/[ -]/.test(file.filename));
+    ok(`${label}: filename has no bidi overrides`,
+      !/[‪-‮⁦-⁩]/.test(file.filename));
+    ok(`${label}: filename ends in the real extension`, file.filename.endsWith(".geojson"));
+    ok(`${label}: no traversal anywhere in the name`, !file.filename.includes(".."), file.filename);
+
+    // The normalised seed is what everything downstream sees.
+    const used = file.filename.replace(/^nullisland-\d+-/, "").replace(/\.geojson$/, "");
+    ok(`${label}: normalised seed is path-safe`, SAFE.test(used), JSON.stringify(used));
+    ok(`${label}: normalised seed is bounded`, used.length > 0 && used.length <= 40, `${used.length}`);
+
+    // And it reaches the boundary file as the same clean value.
+    const props = JSON.parse(file.boundary!.data as string).features[0].properties;
+    ok(`${label}: boundary seed matches the filename`, props.seed === used, String(props.seed));
+    ok(`${label}: boundary carries no raw markup`, !String(props.seed).includes("<"));
+  }
+
+  // Zip-slip proper: every member of a generated archive must stay put.
+  for (const seed of ["../../../../tmp/pwned", "..\\..\\windows\\evil", "/etc/passwd"]) {
+    for (const format of ["shapefile", "kmz"] as const) {
+      const file = generate(opts({ format, seed, count: 3, shape: "point" }));
+      const names = readZip(file.data as Uint8Array).map((e) => e.name);
+      ok(`${format}: no traversing members (${seed.slice(0, 12)})`,
+        names.every((n) => !n.includes("..") && !n.startsWith("/") && !/[\\]/.test(n)),
+        names.join(" "));
+      ok(`${format}: members are still present`, names.length > 0);
+    }
+  }
+
+  // Determinism must survive normalisation: two seeds that clean to the same
+  // thing are the same fixture, and a clean seed is untouched.
+  {
+    const a = generate(opts({ seed: "harbor-lantern-drift", count: 40 }));
+    const b = generate(opts({ seed: "harbor-lantern-drift", count: 40 }));
+    ok("a normal seed is left alone", a.filename.includes("harbor-lantern-drift"), a.filename);
+    ok("normalisation stays deterministic", a.data === b.data);
+
+    const c = generate(opts({ seed: "a/b", count: 40 }));
+    const d = generate(opts({ seed: "a-b", count: 40 }));
+    ok("seeds that normalise alike produce the same file", c.data === d.data);
+  }
+
+  // A hostile seed must survive the share link and still come out clean.
+  {
+    const config = opts({ seed: "../../etc/passwd", count: 20 });
+    const round = decodeConfig("#" + encodeConfig(config));
+    const file = generate({ ...config, ...round } as GenerateOptions);
+    ok("a hostile seed is clean after a round-trip", !file.filename.includes(".."), file.filename);
+  }
+}
+
 /* ── 6. scale ────────────────────────────────────────────────────────────── */
 console.log("\n6. scale");
 for (const [format, count] of [["geojson", 100000], ["shapefile", 50000], ["csv", 100000]] as const) {

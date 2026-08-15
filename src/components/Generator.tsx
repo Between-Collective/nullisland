@@ -30,6 +30,17 @@ const JSON_FORMATS: FormatId[] = ["geojson", "ndjson", "topojson"];
  */
 const EXCLUSIVE = "empty-dataset";
 
+/**
+ * Above this, a shared link asks before it generates.
+ *
+ * Generation is synchronous, and at the top of the range it means seconds of
+ * blocked main thread and over a gigabyte of heap — enough to kill a tab on a
+ * phone. Reaching that with the sliders is a choice; arriving at it because
+ * someone sent you a link is not, so a link that large loads its settings and
+ * waits. Nothing is capped: the Generate button is right there.
+ */
+const LINK_AUTORUN_LIMIT = 10000;
+
 const DEFAULTS: GenerateOptions = {
   format: "geojson",
   count: 500,
@@ -81,16 +92,21 @@ export function Generator() {
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULTS);
   const [result, setResult] = useState<Result>({ source: null, file: null, error: null });
   const [flash, setFlash] = useState<Flash | null>(null);
+  // Set only from a URL, and cleared by the user's first deliberate action.
+  const [heldBack, setHeldBack] = useState(0);
   const hydrated = useRef(false);
 
   const confirmed = (action: FlashAction) => flash?.action === action && flash.ok;
 
   // Derived rather than stored: anything not yet generated from the current
   // settings is, by definition, still in flight.
-  const busy = result.source !== opts;
+  const busy = !heldBack && result.source !== opts;
   const { file, error } = result;
 
   const patch = useCallback((next: Partial<GenerateOptions>) => {
+    // Touching any control is the user taking the wheel, so the link's hold
+    // no longer applies.
+    setHeldBack(0);
     setOpts((current) => ({ ...current, ...next }));
   }, []);
 
@@ -101,6 +117,10 @@ export function Generator() {
     const fromUrl = window.location.hash.length > 1 ? decodeConfig(window.location.hash) : null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpts((current) => ({ ...current, seed: randomSeed(), ...(fromUrl ?? {}) }));
+    if ((fromUrl?.count ?? 0) > LINK_AUTORUN_LIMIT) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHeldBack(fromUrl!.count!);
+    }
     hydrated.current = true;
   }, []);
 
@@ -109,7 +129,9 @@ export function Generator() {
   useEffect(() => {
     const onHashChange = () => {
       const next = decodeConfig(window.location.hash);
-      if (Object.keys(next).length) setOpts((current) => ({ ...current, ...next }));
+      if (!Object.keys(next).length) return;
+      setHeldBack((next.count ?? 0) > LINK_AUTORUN_LIMIT ? next.count! : 0);
+      setOpts((current) => ({ ...current, ...next }));
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -118,6 +140,7 @@ export function Generator() {
   // Debounced regeneration. Everything is synchronous, so the delay is there to
   // stop a slider drag from generating a 25 MB file on every pixel.
   useEffect(() => {
+    if (heldBack) return;
     const timer = setTimeout(() => {
       try {
         setResult({ source: opts, file: generate(opts), error: null });
@@ -130,7 +153,7 @@ export function Generator() {
       }
     }, 220);
     return () => clearTimeout(timer);
-  }, [opts]);
+  }, [opts, heldBack]);
 
   useEffect(() => {
     if (!hydrated.current) return;
@@ -277,7 +300,31 @@ export function Generator() {
           </Button>
         </div>
 
-        {error ? (
+        {heldBack ? (
+          <Card className="p-5">
+            <h2 className="text-[15px] font-semibold tracking-tight text-ink">
+              This link asks for {heldBack.toLocaleString()} features.
+            </h2>
+            <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
+              A file that size takes a few seconds to build, and the tab will not respond while it
+              does — long enough to be killed on a phone. Nothing has been generated yet, and every
+              setting from the link is already loaded, so you can change them first.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="primary" onClick={() => setHeldBack(0)}>
+                Generate anyway
+              </Button>
+              <Button
+                onClick={() => {
+                  setHeldBack(0);
+                  setOpts((current) => ({ ...current, count: 1000 }));
+                }}
+              >
+                Use 1,000 instead
+              </Button>
+            </div>
+          </Card>
+        ) : error ? (
           <Card className="p-5">
             <p className="text-[13px] text-cat-encoding">Generation failed: {error}</p>
             <p className="mt-2 text-[12px] text-muted">

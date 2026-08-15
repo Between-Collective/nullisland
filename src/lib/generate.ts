@@ -20,7 +20,7 @@ import { writeWKT } from "./formats/wkt";
 import { writeGPX, writeKML } from "./formats/xml";
 import { applyProblems } from "./mutate";
 import { appliesTo, getProblem } from "./problems";
-import { Rng } from "./rng";
+import { normaliseSeed, Rng } from "./rng";
 import { addBom, injectNanLiterals, malformJson, mixLineEndings, mojibakeStrings } from "./text";
 import type {
   BoundaryOutput,
@@ -239,6 +239,10 @@ export function generate(options: GenerateOptions): GeneratedFile {
   const opts: GenerateOptions = {
     ...options,
     count: Math.max(0, Math.min(MAX_FEATURES, Math.floor(options.count))),
+    // Normalised once, here, so the RNG, the filename, the members of a
+    // generated ZIP and the boundary's seed property cannot disagree — and so
+    // no downstream caller has to remember that this string came from a URL.
+    seed: normaliseSeed(options.seed),
   };
   const rng = new Rng(opts.seed);
   const format = getFormat(opts.format);

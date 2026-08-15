@@ -83,6 +83,34 @@ export class Rng {
   }
 }
 
+/** Everything a seed is allowed to contain once it reaches a filename. */
+const SEED_ALLOWED = /[^A-Za-z0-9._-]+/g;
+
+/**
+ * The canonical form of a seed.
+ *
+ * A seed arrives from the URL hash, and from there it reaches the download
+ * filename *and the entry names inside generated ZIP archives* — so it is
+ * untrusted input on its way to a path. Left alone, a seed of `../../../x`
+ * produces a shapefile whose five members each escape the directory they are
+ * extracted into, and one containing U+202E makes the download shelf display a
+ * filename that isn't the one being saved.
+ *
+ * Normalising here rather than at the filename means the RNG, the filename, the
+ * archive members and the boundary's `seed` property all agree, and no caller
+ * can forget to do it. Legitimate three-word seeds pass through untouched.
+ */
+export function normaliseSeed(seed: string): string {
+  const cleaned = seed
+    .replace(SEED_ALLOWED, "-")
+    // A leading dot or dash is how you get `..`, `.hidden`, and arguments that
+    // look like flags to whatever ends up handling the file.
+    .replace(/^[-.]+/, "")
+    .replace(/[-.]+$/, "")
+    .slice(0, 40);
+  return cleaned || "seed";
+}
+
 /**
  * Three hyphenated words, so a seed survives being read down a phone or typed
  * from a screenshot into a test case. Any string works as a seed — this only

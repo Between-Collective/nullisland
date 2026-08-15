@@ -95,6 +95,20 @@ The counts are measured from the finished file, not from what was requested — 
 
 Boundaries are off by default, and the whole configuration still lives in the URL, so a boundary fixture shares and reproduces like any other.
 
+## Handling what comes out
+
+The files are hostile on purpose, and a couple of them are hostile to *you*, not just to your parser.
+
+**Generated CSVs contain real formula-injection payloads.** Pick "injection-shaped strings" and rows will include `=cmd|'/c calc'!A1` — the actual DDE payload, not a defanged lookalike. That is the point: if your importer writes it to a CSV that someone later opens in Excel, you want to have found that out here. But don't casually double-click a generated CSV yourself. Open it in a text editor, or import it with formulas disabled.
+
+**Generated files are meant for parsers, not for people.** The same category includes XSS-shaped strings and SQL-shaped strings. They are inert as data and dangerous only if something renders or executes them — which is exactly the property you are testing for.
+
+**The seed is normalised before it reaches a filename.** Seeds arrive from the URL, and the filename ends up as the member names inside a generated ZIP, so anything outside `A-Za-z0-9._-` is flattened to a dash. Without that, a seed of `../../x` would produce a shapefile archive whose five members escape the directory they were extracted into — a real problem for the exact audience this tool has. Three-word seeds are unaffected.
+
+**Large share links ask first.** A link requesting more than 10,000 features loads its settings but waits for a click. Generation is synchronous, and at the top of the range it blocks the tab for seconds and allocates over a gigabyte — fine as a choice you made with the sliders, not fine as something a link does to you on open. Nothing is capped.
+
+The deployed site sends a strict `Content-Security-Policy` along with `nosniff`, `frame-ancestors 'none'` and a closed `Permissions-Policy` (see [vercel.json](vercel.json)). `script-src` has to allow `'unsafe-inline'` because a static Next export inlines its hydration payload and has no server to mint a nonce — so the CSP is a hardening measure here, not a complete XSS defence. The app has no HTML-injection sinks, no backend, no auth, no cookies and no analytics, and after load it makes no network requests at all, which is what lets `connect-src` stay closed.
+
 ## Running it
 
 ```bash
