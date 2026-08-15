@@ -1,4 +1,4 @@
-import type { GeneratedFile } from "./types";
+import type { FilePayload, GeneratedFile } from "./types";
 
 /** Above this, the clipboard is the wrong tool — offer the download instead. */
 export const COPY_LIMIT = 2_000_000;
@@ -9,7 +9,7 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function downloadFile(file: GeneratedFile): void {
+export function downloadFile(file: FilePayload): void {
   const blob =
     typeof file.data === "string"
       ? new Blob([file.data], { type: `${file.mime};charset=utf-8` })

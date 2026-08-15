@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { boundarySpread, samplePosition, type Boundary } from "./boundary";
 import { closeRing, round, wrapLon } from "./geo";
 import { getRegion, REGIONS, type Region } from "./regions";
 import type { Rng } from "./rng";
@@ -118,20 +119,51 @@ function buildProperties(rng: Rng, index: number): Record<string, any> {
 }
 
 /**
+ * Which features are aimed inside the boundary. Shuffled rather than taken in
+ * order: a run of inside features followed by a run of outside ones would let a
+ * filter that simply returns the first N pass the test by accident.
+ */
+function coveragePlan(rng: Rng, count: number, coverage: number): boolean[] {
+  const wanted = Math.round(count * Math.max(0, Math.min(1, coverage)));
+  const plan = Array.from({ length: count }, (_, i) => i < wanted);
+  return rng.shuffle(plan);
+}
+
+/**
  * A clean, well-formed dataset. Every problem in the catalogue is a transform
  * applied on top of this — so with nothing selected you get a valid file, which
  * is itself the control case worth testing against.
+ *
+ * With a boundary, features are placed against it rather than scattered around
+ * the region anchor, so the inside/outside split is something you asked for
+ * instead of something you got.
  */
-export function buildBase(opts: GenerateOptions, rng: Rng): Dataset {
+export function buildBase(
+  opts: GenerateOptions,
+  rng: Rng,
+  boundary: Boundary | null = null,
+): Dataset {
   const region = getRegion(opts.region);
   const features: Feature[] = [];
   const kinds: Array<"point" | "line" | "polygon"> =
     opts.shape === "mixed" ? ["point", "line", "polygon"] : [opts.shape];
 
+  const plan = boundary ? coveragePlan(rng, opts.count, opts.coverage) : null;
+  const fixedSpread = boundary ? boundarySpread(boundary) : 0;
+
   for (let i = 0; i < opts.count; i++) {
     const kind = kinds.length === 1 ? kinds[0] : rng.pick(kinds);
-    const [, , spread] = anchorFor(rng, region);
-    const origin = scatter(rng, region);
+    let origin: Position;
+    let spread: number;
+
+    if (boundary && plan) {
+      origin = samplePosition(rng, boundary, plan[i]);
+      spread = fixedSpread;
+    } else {
+      spread = anchorFor(rng, region)[2];
+      origin = scatter(rng, region);
+    }
+
     features.push({
       type: "Feature",
       id: i + 1,

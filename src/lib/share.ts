@@ -1,7 +1,8 @@
+import { BOUNDARY_IDS } from "./boundary";
 import { FORMATS } from "./formats/index";
 import { PROBLEMS } from "./problems";
 import { REGIONS } from "./regions";
-import type { FormatId, GenerateOptions, ShapeId } from "./types";
+import type { BoundaryId, FormatId, GenerateOptions, ShapeId } from "./types";
 
 /**
  * Config lives in the URL hash so a fixture is shareable and reproducible:
@@ -19,6 +20,11 @@ export function encodeConfig(opts: GenerateOptions): string {
   params.set("i", String(Math.round(opts.intensity * 100)));
   params.set("s", opts.seed);
   if (!opts.pretty) params.set("c", "1");
+  // Omitted when off, so links made before boundaries existed still decode.
+  if (opts.boundary !== "none") {
+    params.set("b", opts.boundary);
+    params.set("v", String(Math.round(opts.coverage * 100)));
+  }
   if (opts.problems.length) params.set("p", opts.problems.join("."));
   return params.toString();
 }
@@ -46,6 +52,16 @@ export function decodeConfig(hash: string): Partial<GenerateOptions> {
   if (seed) out.seed = seed.slice(0, 40);
 
   if (params.get("c") === "1") out.pretty = false;
+
+  const boundary = params.get("b");
+  if (boundary && BOUNDARY_IDS.includes(boundary as BoundaryId)) {
+    out.boundary = boundary as BoundaryId;
+  }
+
+  const coverage = Number(params.get("v"));
+  if (Number.isFinite(coverage) && params.get("v") !== null) {
+    out.coverage = Math.max(0, Math.min(1, coverage / 100));
+  }
 
   const problems = params.get("p");
   if (problems !== null) {

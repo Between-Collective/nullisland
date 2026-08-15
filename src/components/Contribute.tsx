@@ -1,3 +1,4 @@
+import { GitHubStar } from "./GitHubStar";
 import { PROBLEMS } from "@/lib/problems";
 import { NEW_ISSUE_URL, REPO_URL } from "@/lib/site";
 
@@ -39,6 +40,7 @@ export function Contribute() {
           >
             View source
           </a>
+          <GitHubStar tone="mint" className="py-2" />
         </div>
       </div>
     </section>

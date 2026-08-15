@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export function Field({
   label,
@@ -71,6 +71,22 @@ export function Segmented<T extends string>({
   );
 }
 
+/** A tick that draws itself, so the confirmation has a beat rather than a blink. */
+function Check() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden focusable="false">
+      <path
+        className="confirm-check"
+        d="M3.2 8.4 6.4 11.6 12.8 4.6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function Button({
   children,
   onClick,
@@ -79,6 +95,8 @@ export function Button({
   title,
   active,
   className = "",
+  confirmed = false,
+  confirmLabel,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -87,16 +105,45 @@ export function Button({
   title?: string;
   active?: boolean;
   className?: string;
+  /** Show the success state — the caller decides how long it lasts. */
+  confirmed?: boolean;
+  /** What the button says while confirmed. Falls back to its normal label. */
+  confirmLabel?: string;
 }) {
+  // The label is a React render and so swaps instantly, while the colour is a
+  // CSS transition and takes 200ms. Left alone, that leaves the button briefly
+  // green with its resting label on the way out, which reads as a glitch.
+  // Holding the confirm label for the length of the fade keeps the two together.
+  const [leaving, setLeaving] = useState(false);
+  const [wasConfirmed, setWasConfirmed] = useState(confirmed);
+
+  // Adjusted during render rather than in an effect: an effect runs after the
+  // browser has already painted the resting state, so the frame this exists to
+  // remove would flash by anyway. React re-runs the render before committing.
+  if (wasConfirmed !== confirmed) {
+    setWasConfirmed(confirmed);
+    setLeaving(!confirmed);
+  }
+
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => setLeaving(false), 200);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+
+  const showConfirm = confirmed || leaving;
+
   // Swaps the whole style set rather than layering classes, so the pressed look
   // never depends on stylesheet ordering to win.
-  const styles = active
-    ? "border-ink bg-ink text-white"
-    : {
-        primary: "border-ink bg-ink text-white hover:bg-ink-soft font-semibold",
-        ghost: "border-line-strong bg-white text-ink hover:border-dim",
-        quiet: "border-transparent bg-transparent text-muted hover:text-ink",
-      }[variant];
+  const styles = showConfirm
+    ? "border-mint-ink bg-mint-ink text-white"
+    : active
+      ? "border-ink bg-ink text-white"
+      : {
+          primary: "border-ink bg-ink text-white hover:bg-ink-soft font-semibold",
+          ghost: "border-line-strong bg-white text-ink hover:border-dim",
+          quiet: "border-transparent bg-transparent text-muted hover:text-ink",
+        }[variant];
 
   return (
     <button
@@ -106,13 +153,32 @@ export function Button({
       title={title}
       aria-pressed={active}
       className={[
-        "inline-flex items-center justify-center gap-1.5 rounded-full border px-3.5 py-2 text-[12px]",
-        "transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "relative inline-flex items-center justify-center gap-1.5 rounded-full border px-3.5 py-2",
+        "text-[12px] transition-colors duration-200",
+        "disabled:cursor-not-allowed disabled:opacity-40",
+        confirmed ? "confirm-pop" : "",
         styles,
         className,
       ].join(" ")}
     >
-      {children}
+      {showConfirm ? (
+        <>
+          {/* Keyed on the label so a second confirmation replays the animation
+              instead of sitting there already finished. */}
+          <span
+            key={confirmLabel}
+            className={`confirm-label inline-flex items-center gap-1.5 transition-opacity duration-200 ${
+              leaving ? "opacity-0" : ""
+            }`}
+          >
+            <Check />
+            {confirmLabel ?? children}
+          </span>
+          {confirmed && <span className="confirm-ring" aria-hidden />}
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }

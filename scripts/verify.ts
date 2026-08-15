@@ -1,6 +1,8 @@
 /* eslint-disable */
 import { generate, MAX_FEATURES } from "../src/lib/generate";
+import { boundaryContains } from "../src/lib/boundary";
 import { FORMATS } from "../src/lib/formats/index";
+import { signedArea } from "../src/lib/geo";
 import { PROBLEMS, appliesTo } from "../src/lib/problems";
 import { randomSeed } from "../src/lib/rng";
 import { SEED_WORDS } from "../src/lib/seed-words";
@@ -28,6 +30,8 @@ function opts(over: Partial<GenerateOptions> = {}): GenerateOptions {
     intensity: 0.4,
     seed: "testseed",
     pretty: false,
+    boundary: "none",
+    coverage: 0.6,
     ...over,
   };
 }
@@ -434,6 +438,137 @@ console.log("\n5d. seeds");
   const b = generate({ ...config, ...round } as GenerateOptions);
   ok("word seed reproduces identical bytes", a.data === b.data);
   ok("word seed reaches the filename", a.filename.includes("harbor-lantern-drift"), a.filename);
+}
+
+/* ── 5e. boundaries and the ground truth they establish ──────────────────── */
+console.log("\n5e. boundaries");
+{
+  const SHAPES = ["bbox", "polygon", "hole", "multipart"] as const;
+
+  for (const shape of SHAPES) {
+    const file = generate(opts({ boundary: shape, count: 400, shape: "point", coverage: 0.6, pretty: false }));
+    const b = file.boundary!;
+    ok(`${shape}: a boundary file comes out`, !!b && typeof b.data === "string");
+    ok(`${shape}: it is named as a boundary`, b.filename.endsWith("-boundary.geojson"), b.filename);
+
+    const parsed = JSON.parse(b.data as string);
+    ok(`${shape}: parses as a FeatureCollection`, parsed.type === "FeatureCollection");
+    ok(`${shape}: holds exactly one feature`, parsed.features.length === 1);
+    ok(`${shape}: carries a bbox member`, Array.isArray(parsed.bbox) && parsed.bbox.length === 4);
+
+    const geom = parsed.features[0].geometry;
+    const expectMulti = shape === "multipart";
+    ok(`${shape}: geometry type`, geom.type === (expectMulti ? "MultiPolygon" : "Polygon"), geom.type);
+    ok(`${shape}: hole has an interior ring`, shape !== "hole" || geom.coordinates.length === 2);
+    ok(`${shape}: multipart has two parts`, !expectMulti || geom.coordinates.length === 2);
+
+    // Every ring closed, in range, and wound the way RFC 7946 asks.
+    const polygons: any[][] = expectMulti ? geom.coordinates : [geom.coordinates];
+    for (const rings of polygons) {
+      rings.forEach((ring: any[], i: number) => {
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        ok(`${shape}: ring ${i} is closed`, first[0] === last[0] && first[1] === last[1]);
+        ok(`${shape}: ring ${i} stays in range`,
+          ring.every((p: any[]) => Math.abs(p[0]) <= 180 && Math.abs(p[1]) <= 90));
+        const area = signedArea(ring);
+        // Exterior counter-clockwise, interior clockwise.
+        ok(`${shape}: ring ${i} winds correctly`, i === 0 ? area > 0 : area < 0, String(area));
+      });
+    }
+
+    // The counts must describe the file, not the intent.
+    const features = JSON.parse(file.data as string).features;
+    const tagged = features.filter((f: any) => f.properties?.inside === true).length;
+    const touching = features.filter((f: any) => f.properties?.intersects === true).length;
+    ok(`${shape}: reported inside matches the tags`, tagged === b.inside, `${tagged} vs ${b.inside}`);
+    ok(`${shape}: reported intersects matches the tags`, touching === b.inside + b.crossing);
+    ok(`${shape}: every feature is accounted for`,
+      b.inside + b.crossing + b.outside === file.stats.features);
+
+    // And the tags must agree with an independent point-in-polygon pass.
+    let recomputed = 0;
+    for (const f of features) {
+      const [lon, lat] = f.geometry.coordinates;
+      if (boundaryContains(geom, lon, lat)) recomputed++;
+    }
+    ok(`${shape}: tags agree with a fresh containment test`, recomputed === b.inside,
+      `${recomputed} vs ${b.inside}`);
+
+    // Points are the simple case: nothing can straddle a single position.
+    ok(`${shape}: points never cross the edge`, b.crossing === 0, `${b.crossing}`);
+  }
+
+  // Coverage steers the split.
+  for (const [coverage, low, high] of [[0, 0, 0], [0.5, 0.4, 0.6], [1, 0.98, 1]] as const) {
+    const file = generate(opts({ boundary: "polygon", count: 500, shape: "point", coverage }));
+    const ratio = file.boundary!.inside / file.stats.features;
+    ok(`coverage ${coverage} lands in range`, ratio >= low && ratio <= high, ratio.toFixed(3));
+  }
+
+  // Inside features must not be clumped at the head of the file, or a filter
+  // that simply returns the first N would pass by accident.
+  {
+    const file = generate(opts({ boundary: "polygon", count: 600, shape: "point", coverage: 0.5 }));
+    const features = JSON.parse(file.data as string).features;
+    const firstHalf = features.slice(0, 300).filter((f: any) => f.properties.inside).length;
+    ok("inside features are spread through the file", Math.abs(firstHalf - file.boundary!.inside / 2) < 45,
+      `${firstHalf} of ${file.boundary!.inside} in the first half`);
+  }
+
+  // Lines and polygons genuinely straddle, so the two filter semantics differ.
+  {
+    const file = generate(opts({ boundary: "polygon", count: 400, shape: "line", coverage: 0.6 }));
+    ok("lines cross the boundary edge", file.boundary!.crossing > 0, `${file.boundary!.crossing}`);
+  }
+
+  // A whole-world boundary has no outside and says so.
+  {
+    const file = generate(opts({ boundary: "bbox", region: "world", count: 200, shape: "point" , coverage: 0.3 }));
+    ok("world boundary contains everything", file.boundary!.outside === 0, `${file.boundary!.outside}`);
+    ok("world boundary is explained", file.notes.some((n) => n.includes("whole-world")));
+  }
+
+  // Determinism and the share link have to cover boundaries too.
+  {
+    const config = opts({ boundary: "hole", count: 120, coverage: 0.45, seed: "boundary-check-two" });
+    const a = generate(config);
+    const b = generate(config);
+    ok("boundary output is deterministic", a.boundary!.data === b.boundary!.data);
+    ok("boundary data file is deterministic", a.data === b.data);
+
+    const round = decodeConfig("#" + encodeConfig(config));
+    ok("boundary round-trips through the url", round.boundary === "hole", String(round.boundary));
+    ok("coverage round-trips through the url", Math.abs((round.coverage ?? 0) - 0.45) < 0.006,
+      String(round.coverage));
+    const c = generate({ ...config, ...round } as GenerateOptions);
+    ok("shared link reproduces the boundary", c.boundary!.data === a.boundary!.data);
+  }
+
+  // Off by default, and a link written before boundaries existed still decodes.
+  {
+    ok("boundaries are off by default", generate(opts()).boundary === null);
+    const legacy = decodeConfig("#f=geojson&n=40&g=point&r=london&i=40&s=testseed");
+    ok("a pre-boundary link leaves it alone", legacy.boundary === undefined);
+  }
+
+  // The tags have to survive every format that carries attributes at all.
+  for (const format of ["csv", "ndjson", "kml"] as const) {
+    const file = generate(opts({ format, boundary: "bbox", count: 80, shape: "point" }));
+    const text = file.data as string;
+    ok(`${format} carries the inside tag`, text.includes("inside"), format);
+    ok(`${format} still gets a boundary file`, !!file.boundary);
+  }
+
+  // Counts describe the final file: a problem that moves features moves them out.
+  {
+    const clean = generate(opts({ boundary: "bbox", count: 300, shape: "point", coverage: 1 }));
+    const moved = generate(opts({ boundary: "bbox", count: 300, shape: "point", coverage: 1,
+      problems: ["null-island"], intensity: 1 }));
+    ok("a clean run puts everything inside", clean.boundary!.inside === 300, `${clean.boundary!.inside}`);
+    ok("Null Island drags features out of the boundary", moved.boundary!.inside < 300,
+      `${moved.boundary!.inside}`);
+  }
 }
 
 /* ── 6. scale ────────────────────────────────────────────────────────────── */

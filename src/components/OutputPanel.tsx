@@ -97,8 +97,14 @@ export function OutputPanel({
               Everything wrong with this file, in one block.
             </p>
           </div>
-          <Button onClick={copyContext} disabled={!block} className="shrink-0 px-3 py-1.5">
-            {copied ? "Copied" : "Copy"}
+          <Button
+            onClick={copyContext}
+            disabled={!block}
+            confirmed={copied}
+            confirmLabel="Copied"
+            className="shrink-0 px-3 py-1.5"
+          >
+            Copy
           </Button>
         </div>
 

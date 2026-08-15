@@ -7,6 +7,7 @@ import { OutputPanel } from "./OutputPanel";
 import { ProblemGrid } from "./ProblemGrid";
 import { Sidebar } from "./Sidebar";
 import { Button, Card } from "./ui";
+import { BOUNDARY_IDS } from "@/lib/boundary";
 import { copyFile, downloadFile } from "@/lib/download";
 import { FORMATS, getFormat } from "@/lib/formats/index";
 import { generate, MAX_FEATURES } from "@/lib/generate";
@@ -40,6 +41,8 @@ const DEFAULTS: GenerateOptions = {
   // client render identical.
   seed: "quartz-harbor-drift",
   pretty: true,
+  boundary: "none",
+  coverage: 0.6,
 };
 
 function closestStep(count: number): number {
@@ -61,11 +64,26 @@ interface Result {
   error: string | null;
 }
 
+type FlashAction = "share" | "copy" | "download" | "boundary";
+
+/**
+ * Which control just did something, and whether it worked. Held as an object so
+ * that pressing the same button twice is a new value — a bare string would be
+ * identical on the second press, and the reset timer would never restart.
+ */
+interface Flash {
+  action: FlashAction;
+  message: string;
+  ok: boolean;
+}
+
 export function Generator() {
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULTS);
   const [result, setResult] = useState<Result>({ source: null, file: null, error: null });
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash] = useState<Flash | null>(null);
   const hydrated = useRef(false);
+
+  const confirmed = (action: FlashAction) => flash?.action === action && flash.ok;
 
   // Derived rather than stored: anything not yet generated from the current
   // settings is, by definition, still in flight.
@@ -121,7 +139,7 @@ export function Generator() {
 
   useEffect(() => {
     if (!flash) return;
-    const timer = setTimeout(() => setFlash(null), 1800);
+    const timer = setTimeout(() => setFlash(null), 1600);
     return () => clearTimeout(timer);
   }, [flash]);
 
@@ -156,6 +174,9 @@ export function Generator() {
       intensity: 0.2 + Math.random() * 0.6,
       seed: randomSeed(),
       pretty: true,
+      // Weighted towards no boundary: it is a mode, not a flavour of noise.
+      boundary: Math.random() < 0.4 ? randomFrom(BOUNDARY_IDS.slice(1)) : "none",
+      coverage: 0.25 + Math.random() * 0.5,
     });
   };
 
@@ -164,21 +185,28 @@ export function Generator() {
       await navigator.clipboard.writeText(
         `${window.location.origin}${window.location.pathname}#${encodeConfig(opts)}`,
       );
-      setFlash("Link copied");
+      setFlash({ action: "share", message: "Link copied", ok: true });
     } catch {
-      setFlash("Copy blocked");
+      setFlash({ action: "share", message: "Copy blocked", ok: false });
     }
   };
 
   const copy = async () => {
     if (!file) return;
-    setFlash((await copyFile(file)) ? "File copied" : "Copy blocked");
+    const done = await copyFile(file);
+    setFlash({ action: "copy", message: done ? "File copied" : "Copy blocked", ok: done });
   };
 
   const download = () => {
     if (!file) return;
     downloadFile(file);
-    setFlash("Saved");
+    setFlash({ action: "download", message: "Saved", ok: true });
+  };
+
+  const downloadBoundary = () => {
+    if (!file?.boundary) return;
+    downloadFile(file.boundary);
+    setFlash({ action: "boundary", message: "Boundary saved", ok: true });
   };
 
   return (
@@ -206,11 +234,15 @@ export function Generator() {
             />
           </label>
 
+          {/* The buttons carry the confirmation now, but it still has to be
+              announced — a drawn tick is invisible to a screen reader. */}
           <span
             aria-live="polite"
-            className="min-w-[72px] font-mono text-[11px] text-muted"
+            className={`min-w-[72px] font-mono text-[11px] ${
+              flash && !flash.ok ? "text-cat-encoding" : "text-muted"
+            }`}
           >
-            {busy ? "working…" : (flash ?? "")}
+            {busy ? "working…" : (flash?.message ?? "")}
           </span>
 
           {JSON_FORMATS.includes(opts.format) && (
@@ -235,7 +267,12 @@ export function Generator() {
             </span>
             Randomise everything
           </Button>
-          <Button onClick={share} title="Copy a link that reproduces this exact file">
+          <Button
+            onClick={share}
+            confirmed={confirmed("share")}
+            confirmLabel="Link copied"
+            title="Copy a link that reproduces this exact file"
+          >
             Share
           </Button>
         </div>
@@ -249,7 +286,16 @@ export function Generator() {
           </Card>
         ) : (
           <div className="space-y-3">
-            <HeroPanel file={file} busy={busy} onDownload={download} onCopy={copy} />
+            <HeroPanel
+              file={file}
+              busy={busy}
+              onDownload={download}
+              onCopy={copy}
+              onDownloadBoundary={downloadBoundary}
+              copied={confirmed("copy")}
+              saved={confirmed("download")}
+              boundarySaved={confirmed("boundary")}
+            />
             <OutputPanel file={file} formatLabel={getFormat(opts.format).label} />
           </div>
         )}

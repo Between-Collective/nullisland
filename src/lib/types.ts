@@ -56,6 +56,9 @@ export type FormatId =
 
 export type ShapeId = "point" | "line" | "polygon" | "mixed";
 
+/** The area you upload to a map to filter by. "none" leaves the old behaviour. */
+export type BoundaryId = "none" | "bbox" | "polygon" | "hole" | "multipart";
+
 export type ProblemCategory =
   | "coordinates"
   | "geometry"
@@ -87,6 +90,10 @@ export interface GenerateOptions {
   seed: string;
   /** Pretty-print JSON output. */
   pretty: boolean;
+  /** Emit a boundary polygon alongside the data, and place features against it. */
+  boundary: BoundaryId;
+  /** 0–1. The share of features aimed inside the boundary. */
+  coverage: number;
 }
 
 /**
@@ -98,6 +105,12 @@ export interface GenerateOptions {
 export interface MapPreview {
   /** [lon, lat] pairs, subsampled for large datasets. */
   points: Array<[number, number]>;
+  /**
+   * Parallel to `points`: 1 inside the boundary, 0 outside, -1 when no boundary
+   * is in play. Kept alongside rather than as a third ordinate so a position
+   * stays a position.
+   */
+  inside: number[];
   /** Positions examined before sampling. */
   total: number;
   /** Positions that were not finite numbers at all. */
@@ -108,18 +121,41 @@ export interface MapPreview {
   bbox: [number, number, number, number] | null;
 }
 
-export interface GeneratedFile {
+/** Anything downloadable. The boundary is a file too, just a much smaller one. */
+export interface FilePayload {
   filename: string;
   mime: string;
   /** Text for text formats, bytes for kmz/shapefile. */
   data: string | Uint8Array;
   bytes: number;
+}
+
+/**
+ * The boundary that came with a dataset, and the ground truth it establishes.
+ * Counts are measured from the finished geometry, not from what was aimed for —
+ * a problem that moves features moves them out of the boundary too.
+ */
+export interface BoundaryOutput extends FilePayload {
+  shape: BoundaryId;
+  /** Every ring, exterior and interior, as [lon, lat] for plotting. */
+  rings: Array<Array<[number, number]>>;
+  bbox: [number, number, number, number];
+  /** Every position within the boundary — a `contains` filter returns these. */
+  inside: number;
+  /** Some positions within — an `intersects` filter returns these too. */
+  crossing: number;
+  outside: number;
+  preview: string;
+}
+
+export interface GeneratedFile extends FilePayload {
   /** Truncated text (or a hex dump for binaries) for the on-screen preview. */
   preview: string;
   previewTruncated: boolean;
   /** What the generator did, and what the chosen format silently dropped. */
   notes: string[];
   map: MapPreview;
+  boundary: BoundaryOutput | null;
   stats: {
     features: number;
     problems: string[];

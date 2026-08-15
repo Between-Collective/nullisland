@@ -61,6 +61,40 @@ Where a format can't express a problem (there is no `crs` member in a CSV), the 
 
 The **Chaos** slider controls how much of the dataset each selected problem touches.
 
+## Boundaries
+
+Filtering by an uploaded area is its own class of bug, and the reason those bugs survive is that you can't tell by looking. A map draws a boundary, draws some pins, returns a number — and the number looks fine whether or not it's right.
+
+So Null Island generates the boundary and the data together, and tells you the answer.
+
+Pick a boundary shape and you get a **second file**, `…-boundary.geojson`, holding one polygon:
+
+| Shape | Geometry | What it catches |
+| --- | --- | --- |
+| **Box** | `Polygon`, 5 positions, plus a `bbox` member | The plain min/max case |
+| **Irregular** | `Polygon`, 48 vertices | Forces real point-in-polygon, not a min/max comparison |
+| **Hole** | `Polygon` with an interior ring | Points in the hole are outside — plenty of filters disagree |
+| **Two parts** | `MultiPolygon`, two disjoint areas | Naive readers only ever see the first part |
+
+Exterior rings wind counter-clockwise and interior rings clockwise, per RFC 7946, because getting that backwards is itself a common way to make a filter return nothing at all.
+
+The **Inside** slider sets how much of the dataset lands within the boundary. Every feature is then tagged with the answer your filter should give:
+
+```json
+{ "type": "Feature",
+  "properties": { "name": "West Quay Depot", "inside": true, "intersects": true, … },
+  "geometry": { "type": "Point", "coordinates": [-0.0713, 51.5019] } }
+```
+
+- `inside` — every position within the boundary. A **contains** filter should return exactly these.
+- `intersects` — at least one position within. An **intersects** filter should return these too.
+
+For points the two agree. For lines and polygons they don't, and the difference is the whole problem: a 250-feature polygon set against a box might be 107 contained and 119 intersecting. If your filter returns 119 when you meant containment, that gap is the bug.
+
+The counts are measured from the finished file, not from what was requested — so they stay true when a problem is selected too. Turn on **Null Island** and watch the contained count fall as features get dragged to 0°N 0°E.
+
+Boundaries are off by default, and the whole configuration still lives in the URL, so a boundary fixture shares and reproduces like any other.
+
 ## Running it
 
 ```bash
@@ -74,7 +108,9 @@ To check everything:
 npm run check
 ```
 
-That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 526 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, and determinism.
+That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 618 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, and determinism.
+
+The boundary checks are deliberately paranoid: every reported count is re-derived with an independent point-in-polygon pass over the written file, because a ground truth you can't trust is worse than none at all.
 
 `npm run build` produces a fully static site in `out/`, deployable to any static host.
 

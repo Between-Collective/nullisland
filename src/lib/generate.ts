@@ -1,6 +1,17 @@
 import { buildBase } from "./base";
+import {
+  boundaryContains,
+  buildBoundary,
+  coversWorld,
+  getBoundaryMeta,
+  regionExtent,
+  tagFeatures,
+  writeBoundaryGeoJSON,
+  type Boundary,
+} from "./boundary";
 import { utf8 } from "./bytes";
 import { forEachPosition } from "./geo";
+import { getRegion } from "./regions";
 import { writeCSV } from "./formats/csv";
 import { getFormat } from "./formats/index";
 import { writeGeoJSON, writeNDJSON, writeTopoJSON } from "./formats/json";
@@ -11,7 +22,13 @@ import { applyProblems } from "./mutate";
 import { appliesTo, getProblem } from "./problems";
 import { Rng } from "./rng";
 import { addBom, injectNanLiterals, malformJson, mixLineEndings, mojibakeStrings } from "./text";
-import type { Dataset, GenerateOptions, GeneratedFile, MapPreview } from "./types";
+import type {
+  BoundaryOutput,
+  Dataset,
+  GenerateOptions,
+  GeneratedFile,
+  MapPreview,
+} from "./types";
 import { makeZip, type ZipEntry } from "./zip";
 
 const PREVIEW_LINES = 400;
@@ -96,8 +113,9 @@ const MAP_SAMPLE_LIMIT = 1600;
  * and out-of-range positions here (rather than filtering them out) is the
  * point: "412 positions are off-world" is exactly what the user needs to see.
  */
-function buildMapPreview(ds: Dataset): MapPreview {
+function buildMapPreview(ds: Dataset, boundary: Boundary | null): MapPreview {
   const all: Array<[number, number]> = [];
+  const allInside: number[] = [];
   let total = 0;
   let invalid = 0;
   let outOfRange = 0;
@@ -124,20 +142,28 @@ function buildMapPreview(ds: Dataset): MapPreview {
       minY = Math.min(minY, lat);
       maxY = Math.max(maxY, lat);
       all.push([lon, lat]);
+      allInside.push(boundary ? (boundaryContains(boundary.geometry, lon, lat) ? 1 : 0) : -1);
     });
   }
 
   // Even stride rather than head-truncation, so a vertex bomb or a trailing
   // cluster still shows up in the plot.
   let points = all;
+  let inside = allInside;
   if (all.length > MAP_SAMPLE_LIMIT) {
     const stride = all.length / MAP_SAMPLE_LIMIT;
     points = [];
-    for (let i = 0; i < MAP_SAMPLE_LIMIT; i++) points.push(all[Math.floor(i * stride)]);
+    inside = [];
+    for (let i = 0; i < MAP_SAMPLE_LIMIT; i++) {
+      const at = Math.floor(i * stride);
+      points.push(all[at]);
+      inside.push(allInside[at]);
+    }
   }
 
   return {
     points,
+    inside,
     total,
     invalid,
     outOfRange,
@@ -160,6 +186,55 @@ function truncate(text: string): { preview: string; truncated: boolean } {
   return { preview: out, truncated: clipped };
 }
 
+/**
+ * The boundary file and the counts that make it a test rather than a picture.
+ * Counts come from `tagFeatures`, which reads the finished geometry — so they
+ * stay true even when a problem has thrown features across the world.
+ */
+function buildBoundaryOutput(
+  boundary: Boundary,
+  ds: Dataset,
+  opts: GenerateOptions,
+  base: string,
+): BoundaryOutput {
+  const region = getRegion(opts.region);
+  const counts = tagFeatures(ds.features, boundary);
+  const text = writeBoundaryGeoJSON(boundary, region, opts.seed, opts.pretty);
+  const meta = getBoundaryMeta(boundary.shape);
+  const matched = counts.inside + counts.crossing;
+
+  ds.notes.push(
+    `Boundary: ${meta.label.toLowerCase()} over ${region.label}, written to a separate GeoJSON.`,
+    `Of ${ds.features.length.toLocaleString()} features, ${counts.inside.toLocaleString()} are ` +
+      `fully inside it, ${counts.crossing.toLocaleString()} cross its edge and ` +
+      `${counts.outside.toLocaleString()} are outside. A contains filter should return ` +
+      `${counts.inside.toLocaleString()}; an intersects filter should return ` +
+      `${matched.toLocaleString()}.`,
+    "Every feature carries inside and intersects properties holding the expected answer.",
+  );
+
+  if (counts.untagged) {
+    ds.notes.push(
+      `${counts.untagged.toLocaleString()} features have no properties object to tag, ` +
+        "so they are counted but not labelled.",
+    );
+  }
+
+  return {
+    filename: `${base}-boundary.geojson`,
+    mime: "application/geo+json",
+    data: text,
+    bytes: utf8(text).length,
+    shape: boundary.shape,
+    rings: boundary.rings,
+    bbox: boundary.extent,
+    inside: counts.inside,
+    crossing: counts.crossing,
+    outside: counts.outside,
+    preview: truncate(text).preview,
+  };
+}
+
 export function generate(options: GenerateOptions): GeneratedFile {
   const opts: GenerateOptions = {
     ...options,
@@ -180,12 +255,32 @@ export function generate(options: GenerateOptions): GeneratedFile {
   const dataIds = usable.filter((id) => getProblem(id)?.phase === "data");
   const textIds = new Set(usable.filter((id) => getProblem(id)?.phase === "text"));
 
-  const ds = buildBase(opts, rng);
-  applyProblems(ds, dataIds, opts, rng);
+  // A whole-world boundary has no outside, so nothing can be placed there.
+  // Saying so beats spinning through a rejection loop that can never succeed.
+  const extent = regionExtent(getRegion(opts.region));
+  const worldWide = opts.boundary !== "none" && coversWorld(extent);
+  const effective: GenerateOptions = worldWide ? { ...opts, coverage: 1 } : opts;
+  const boundary = buildBoundary(rng, extent, effective.boundary);
+
+  const ds = buildBase(effective, rng, boundary);
+  applyProblems(ds, dataIds, effective, rng);
+
+  const base = `nullisland-${ds.features.length}-${opts.seed}`;
+
+  // Tagging runs after the problems, so the counts describe the file as it will
+  // be written rather than as it was planned.
+  const boundaryOutput = boundary ? buildBoundaryOutput(boundary, ds, effective, base) : null;
+
+  if (worldWide) {
+    ds.notes.push(
+      "A whole-world boundary contains everything, so nothing can sit outside it. " +
+        "Pick a city to get an inside/outside split.",
+    );
+  }
 
   // Sampled before serialisation, so it reflects the mutated geometry itself
   // rather than whatever a lossy format was able to keep.
-  const map = buildMapPreview(ds);
+  const map = buildMapPreview(ds, boundary);
 
   if (skipped.length) {
     ds.notes.push(
@@ -195,7 +290,6 @@ export function generate(options: GenerateOptions): GeneratedFile {
     );
   }
 
-  const base = `nullisland-${ds.features.length}-${opts.seed}`;
   const filename = `${base}.${format.ext}`;
 
   let data: string | Uint8Array;
@@ -247,6 +341,7 @@ export function generate(options: GenerateOptions): GeneratedFile {
     previewTruncated,
     notes: ds.notes,
     map,
+    boundary: boundaryOutput,
     stats: { features: ds.features.length, problems: usable },
   };
 }

@@ -2,9 +2,10 @@
 
 import { Wordmark } from "./Logo";
 import { Field, Segmented, type Option } from "./ui";
+import { BOUNDARIES, coversWorld, regionExtent } from "@/lib/boundary";
 import { FORMATS } from "@/lib/formats/index";
-import { REGIONS } from "@/lib/regions";
-import type { FormatId, GenerateOptions, ShapeId } from "@/lib/types";
+import { getRegion, REGIONS } from "@/lib/regions";
+import type { BoundaryId, FormatId, GenerateOptions, ShapeId } from "@/lib/types";
 
 const SHAPE_OPTIONS: Option<ShapeId>[] = [
   { value: "point", label: "Points" },
@@ -12,6 +13,12 @@ const SHAPE_OPTIONS: Option<ShapeId>[] = [
   { value: "polygon", label: "Polygons" },
   { value: "mixed", label: "Mixed" },
 ];
+
+const BOUNDARY_OPTIONS: Option<BoundaryId>[] = BOUNDARIES.map((b) => ({
+  value: b.id,
+  label: b.label,
+  hint: b.blurb,
+}));
 
 function FormatTile({
   id,
@@ -63,6 +70,8 @@ export function Sidebar({
   countSteps: number[];
   countIndex: number;
 }) {
+  const isWorldWide = coversWorld(regionExtent(getRegion(opts.region)));
+
   return (
     <aside className="order-2 flex flex-col gap-6 border-line bg-card p-4 sm:p-5 lg:order-1 lg:h-full lg:border-r">
       <div className="flex items-center justify-between">
@@ -142,6 +151,46 @@ export function Sidebar({
         </Field>
       </div>
 
+      {/* Boundaries get their own block: turning one on changes what comes out
+          of the generator — two files instead of one — rather than just tuning
+          the dataset the way the controls above do. */}
+      <div className="space-y-5 border-t border-line pt-5">
+        <Field label="Boundary">
+          <Segmented
+            ariaLabel="Boundary shape"
+            options={BOUNDARY_OPTIONS}
+            value={opts.boundary}
+            onChange={(value) => patch({ boundary: value })}
+          />
+        </Field>
+
+        {opts.boundary === "none" ? (
+          <p className="text-[11.5px] leading-relaxed text-muted">
+            Add a boundary to get a second GeoJSON — the area you upload to filter by — plus a
+            count of how many features should survive that filter.
+          </p>
+        ) : (
+          <>
+            <Field label="Inside" value={`${Math.round(opts.coverage * 100)}%`}>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(opts.coverage * 100)}
+                onChange={(e) => patch({ coverage: Number(e.target.value) / 100 })}
+                aria-label="Share of features placed inside the boundary"
+                className="w-full"
+              />
+            </Field>
+            <p className="text-[11.5px] leading-relaxed text-muted">
+              {isWorldWide
+                ? "A whole-world boundary contains everything. Pick a city for an inside/outside split."
+                : "Every feature is tagged with the answer your filter should give."}
+            </p>
+          </>
+        )}
+      </div>
     </aside>
   );
 }
