@@ -4,7 +4,7 @@
 
 Every geo-viz tool says "bring us whatever you've got". Then a file arrives with every point stacked on one lat/lon, coordinates in metres, a BOM at byte zero, and half the rows missing a geometry.
 
-Null Island generates those files on purpose. Pick a format, pick a size, pick which problems to bake in — or randomise it — and download a fixture.
+Null Island generates those files on purpose. Pick a format, pick a data type — ADS-B tracks, AIS positions, parcels, census tracts, ad-exchange pings — pick which problems to bake in, and download a fixture. Or randomise it, or take a whole package of them at once.
 
 Everything runs in the browser. Nothing is uploaded, nothing is stored, and the whole thing builds to static files.
 
@@ -45,9 +45,47 @@ The shapefile and ZIP writers are hand-rolled — there are no dependencies beyo
 
 Where a format can't express a problem (there is no `crs` member in a CSV), the app says so and skips it rather than pretending. Where a format silently loses data — GPX flattening polygons to tracks, WKT dropping every attribute, a shapefile coercing mixed geometry to null shapes — the output panel tells you exactly what was dropped.
 
+## Data types
+
+A file of `name`, `category` and `status` columns exercises a parser. It does not exercise the code somebody wrote for an ADS-B altitude, a parcel number or a census GEOID — and that is where the assumptions are, so that is where the bugs are.
+
+Pick a **data type** and the fixture arrives wearing the schema of a real feed: the right column names, the right value ranges, the right geometry. A flight track is a long smooth line, a parcel is a cell of a lot grid that shares edges with its neighbours, a scene footprint is a big axis-aligned rectangle that will happily cross the antimeridian.
+
+| Family | Data types |
+| --- | --- |
+| Mobility & transport | Flight & aviation (ADS-B) · Maritime & shipping (AIS) · Telematics & fleet · Transit feeds (GTFS) · Micromobility (MDS) |
+| AdTech, retail & consumer | Mobile location data · Points of interest · Geosocial & check-ins · Trade area & catchment · Psychographics & spending |
+| Real estate & planning | Cadastral & parcel · Building footprints · Zoning & land use · Indoor mapping (IMDF/BIM) · Infrastructure & utilities |
+| Earth observation | Satellite & aerial imagery · Elevation contours & spot heights · Weather observations · Land cover & vegetation (NDVI) · Natural hazard zones |
+| Demographics & public admin | Census & boundary · Epidemiological & health · Crime & incident |
+
+Earth observation ships as the vector products that arrive alongside the imagery — scene footprints with STAC-style metadata, contours and spot heights, station observations, class polygons — because this is a vector generator. There is no raster pipeline.
+
+Columns agree with each other before anything breaks them: `TOTAL_VAL` is `LAND_VAL` plus `BLDG_VAL`, `last_contact` runs ahead of `time_position`, a vessel at anchor has a speed of zero, the `geo_hash` column is computed from the coordinate beside it, and a tract's `INTPTLAT` is its own internal point. That matters, because a fixture where everything is subtly wrong tests nothing — the point is that everything is right except the thing you selected.
+
+### Problems that only exist in one world
+
+Each data type brings its own catalogue entries, tagged as its own and offered nowhere else: an AIS sentinel position is not a thing that happens to a parcel export, and the app says so rather than inventing it.
+
+**Mobility** — AIS not-available sentinels (position 91/181, speed 102.3, heading 511) · receiver gaps and out-of-order fixes · movement with the engine off · GTFS times past 24:00:00 · ids that belong to the equipment rather than the thing · fixed-width padding
+
+**AdTech & consumer** — coordinates rounded for privacy but still claiming 8 m accuracy · geocoder centroid pile-ups · 64-bit ids through a double · outlines squared off to their envelope · areas that overlap by design · code lists that change mid-file · columns that look categorical and aren't
+
+**Real estate** — slivers and gaps at shared edges · roof outlines rather than ground outlines · coordinates still in the building's own grid · endpoints that nearly meet · many records on one outline · retired records beside their replacements · one key written several ways · area cached from another projection
+
+**Earth observation** — longitudes in the 0–360 domain · two units in one column · unknown as a number (-9999, 99.9, 0)
+
+**Public administration** — leading zeros eaten · two boundary vintages in one key column · population on a tract with no land · unknown times defaulted to midnight on the 1st
+
+**The spreadsheet in the middle** — round-tripped through Excel (`sep=,`, `1.00016E+09`, zeros gone) · unquoted commas shifting every column right
+
+Where several families ship the same breakage under different names, it is one problem that knows the difference: *two units, one column* converts feet to metres for a building height, Celsius to Fahrenheit for a temperature, and 0–1 to 0–100 for a battery, and says which column it touched.
+
+**Typical for this data type** selects what that feed actually arrives with, so you can start from a realistic bad file rather than assembling one.
+
 ## Problems
 
-42 of them, in five categories.
+42 general ones, in five categories, plus 30 that belong to particular data types.
 
 **Coordinates** — everything on one point · swapped lat/lon · Null Island · precision drift · out-of-range values · numbers as strings · antimeridian crossing · polar coordinates · projected metres (EPSG:3857) · Z and M values · null/NaN inside coordinates
 
@@ -95,6 +133,24 @@ The counts are measured from the finished file, not from what was requested — 
 
 Boundaries are off by default, and the whole configuration still lives in the URL, so a boundary fixture shares and reproduces like any other.
 
+## Packages
+
+One file at a time answers "does my map survive this problem". A **package** answers the question you actually have — does it survive a morning of real uploads — by rolling 5, 9 or 18 fixtures at once and zipping them together.
+
+The formats are swept rather than drawn at random, so a nine-file package contains every container exactly once, and a five-file one still covers GeoJSON, CSV, a real shapefile bundle, KML and GeoJSONL. The data types are swept too, striding across the taxonomy so nine files are nine different kinds of data from at least four families — flight tracks as KML next to a parcel shapefile next to census tracts as TopoJSON. Each file gets its own size, place and problem set, including at least one thing its data type is known for, and the lead problem category rotates so coordinates, geometry, attributes, structure and encoding are all represented before anything repeats. Roughly two files in five come with a boundary and its ground-truth counts.
+
+The archive contains:
+
+```
+README.md          every file, what's in it, what's wrong with it, and a link that rebuilds it
+manifest.json      the same thing for something that would rather not read prose
+files/             the fixtures, plus any boundary sidecars
+```
+
+`README.md` is the AI context for the whole package rather than a single file — drop the folder into an agent's working directory and it can test against the notes without opening a fixture. Every entry ends with a link that regenerates that exact file, and the on-screen listing has an **open** link per file that loads its settings back into the generator.
+
+The whole package derives from one seed, so `nullisland-pack-9-sand-frost-ember.zip` is rebuilt byte for byte from `sand-frost-ember`, and each file inside it from `sand-frost-ember-3` and so on. Packages stay in the hundreds of features per file: breadth is the point, and breadth at 500 features finds the same bugs as breadth at 50,000.
+
 ## Handling what comes out
 
 The files are hostile on purpose, and a couple of them are hostile to *you*, not just to your parser.
@@ -122,7 +178,7 @@ To check everything:
 npm run check
 ```
 
-That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 618 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, and determinism.
+That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 1,561 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte.
 
 The boundary checks are deliberately paranoid: every reported count is re-derived with an independent point-in-polygon pass over the written file, because a ground truth you can't trust is worse than none at all.
 
@@ -140,6 +196,7 @@ const file = generate({
   count: 500,
   shape: "point",
   region: "london",
+  profile: "flight-adsb",
   problems: ["coincident", "precision-drift", "mixed-schema"],
   intensity: 0.4,
   seed: "harbor-lantern-drift",
@@ -151,6 +208,19 @@ file.data;     // string, or Uint8Array for KMZ and shapefiles
 file.notes;    // what was done, and what the format silently dropped
 ```
 
+Packages come from the same place:
+
+```ts
+import { buildPackage } from "./src/lib/package";
+
+const pack = buildPackage({ seed: "sand-frost-ember", size: 9 });
+
+pack.filename; // "nullisland-pack-9-sand-frost-ember.zip"
+pack.data;     // Uint8Array — the archive
+pack.readme;   // the AI context for every file in it
+pack.entries;  // each file, its options, its notes and its path inside the zip
+```
+
 `generate()` also returns a `map` field — a sampled, bounded view of where the geometry landed, with counts of invalid and out-of-range positions. That's what the plot draws, and it's useful on its own for assertions.
 
 Layout:
@@ -159,9 +229,12 @@ Layout:
 - `lib/mutate.ts` — every problem, as a transform over that dataset, applied in a fixed order
 - `lib/text.ts` — byte-level corruptions applied after serialisation
 - `lib/formats/` — one writer per format
-- `lib/problems.ts` — the catalogue, including which formats can express what
+- `lib/problems.ts` — the catalogue, including which formats and data types can express what
+- `lib/profiles/` — the 23 data types: field lists, geometry modes, and the cross-column arithmetic that has to hold
+- `lib/domain.ts` — problems that only exist inside a data type, each told which columns it applies to
+- `lib/package.ts` — the format sweep, the archive, and the context written into it
 
-Adding a problem means adding a catalogue entry and one transform function.
+Adding a problem means adding a catalogue entry and one transform function. Adding a data type means adding a field list — the writers, the problems and the UI pick it up from there.
 
 ## Sharing a fixture
 

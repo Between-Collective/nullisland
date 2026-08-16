@@ -3,7 +3,16 @@ import { generate, MAX_FEATURES } from "../src/lib/generate";
 import { boundaryContains } from "../src/lib/boundary";
 import { FORMATS } from "../src/lib/formats/index";
 import { signedArea } from "../src/lib/geo";
+import { buildPackage, MAX_PACKAGE_FILES } from "../src/lib/package";
 import { PROBLEMS, appliesTo } from "../src/lib/problems";
+import {
+  DEFAULT_PROFILE,
+  FAMILIES,
+  getProfile,
+  PROFILES,
+  profileShape,
+  profilesInFamily,
+} from "../src/lib/profiles/index";
 import { randomSeed } from "../src/lib/rng";
 import { SEED_WORDS } from "../src/lib/seed-words";
 import { decodeConfig, encodeConfig } from "../src/lib/share";
@@ -26,6 +35,7 @@ function opts(over: Partial<GenerateOptions> = {}): GenerateOptions {
     count: 60,
     shape: "mixed",
     region: "london",
+    profile: "generic",
     problems: [],
     intensity: 0.4,
     seed: "testseed",
@@ -660,6 +670,196 @@ for (const [format, count] of [["geojson", 100000], ["shapefile", 50000], ["csv"
   console.log(`  ${format.padEnd(10)} ${count.toLocaleString().padStart(8)} features  ${(file.bytes / 1e6).toFixed(1)} MB  ${ms.toFixed(0)}ms`);
 }
 ok("MAX_FEATURES clamps", generate(opts({ count: MAX_FEATURES * 3, shape: "point" })).stats.features <= MAX_FEATURES);
+
+/* ── 7. packages ─────────────────────────────────────────────────────────── */
+console.log("\n7. packages");
+{
+  const started = process.hrtime.bigint();
+  const pack = buildPackage({ seed: "pack-harbor-drift", size: 9 });
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  console.log(`  9 files  ${pack.features.toLocaleString().padStart(7)} features  ${(pack.bytes / 1e6).toFixed(2)} MB  ${ms.toFixed(0)}ms  ${pack.filename}`);
+
+  const again = buildPackage({ seed: "pack-harbor-drift", size: 9 });
+  ok("a package seed is reproducible",
+    Buffer.from(pack.data as Uint8Array).equals(Buffer.from(again.data as Uint8Array)));
+  ok("a package is built on time", ms < 8000, `${ms.toFixed(0)}ms`);
+
+  const members = readZip(pack.data as Uint8Array);
+  const names = members.map((m) => m.name);
+  ok("context leads the archive", names[0] === "README.md" && names[1] === "manifest.json", names.slice(0, 2).join(" "));
+  ok("every fixture is filed", names.slice(2).every((n) => n.startsWith("files/")), names.slice(2).join(" "));
+  ok("no traversing members", names.every((n) => !n.includes("..") && !n.startsWith("/") && !/\\/.test(n)));
+
+  const expected = 2 + pack.entries.length + pack.entries.filter((e) => e.boundaryPath).length;
+  ok("one member per file and boundary", names.length === expected, `${names.length} of ${expected}`);
+  for (const entry of pack.entries) {
+    ok(`${entry.options.format}: fixture is in the archive`, names.includes(entry.path), entry.path);
+    if (entry.boundaryPath) {
+      ok(`${entry.options.format}: boundary is in the archive`, names.includes(entry.boundaryPath));
+    }
+  }
+
+  // The sweep is the promise a package makes: every container, once.
+  const swept = new Set(pack.entries.map((e) => e.options.format));
+  ok("nine files cover every format", swept.size === FORMATS.length, [...swept].join(","));
+
+  // And the lead categories are what make five files worth having.
+  const leads = new Set(pack.entries.map((e) => e.lead));
+  ok("every problem category leads a file", leads.size === 5, [...leads].join(","));
+
+  // A package is breadth: nine files should be nine data types, spread across
+  // the taxonomy rather than nine neighbours in the catalogue.
+  const types = new Set(pack.entries.map((e) => e.options.profile));
+  ok("nine files are nine data types", types.size === 9, [...types].join(","));
+  const families = new Set(pack.entries.map((e) => getProfile(e.options.profile).family));
+  ok("they span the families", families.size >= 4, [...families].join(","));
+  ok("no generic exports in a package",
+    !pack.entries.some((e) => e.options.profile === DEFAULT_PROFILE));
+  ok("each file has the geometry its data type comes in",
+    pack.entries.every((e) => e.options.shape === profileShape(getProfile(e.options.profile))));
+  ok("the readme names the data types",
+    pack.entries.every((e) => pack.readme.includes(e.profileLabel)));
+
+  const manifest = JSON.parse(pack.manifest);
+  ok("manifest lists every file", manifest.files.length === pack.entries.length);
+  ok("manifest paths match the archive",
+    manifest.files.every((f: any) => names.includes(f.path)));
+  ok("manifest boundary counts are the ground truth",
+    manifest.files.every((f: any) =>
+      !f.boundary || f.boundary.intersects >= f.boundary.contains));
+
+  ok("the readme names every file",
+    pack.entries.every((e) => pack.readme.includes(e.file.filename)));
+  ok("the readme carries the notes",
+    pack.entries.every((e) => e.file.notes.every((note) => pack.readme.includes(note))));
+
+  // The link printed under each entry has to rebuild that exact file, or the
+  // reproduction instructions in the README are a lie.
+  for (const entry of pack.entries) {
+    const round = decodeConfig("#" + entry.hash);
+    const rebuilt = generate({ ...entry.options, ...round } as GenerateOptions);
+    const same = typeof rebuilt.data === "string"
+      ? rebuilt.data === entry.file.data
+      : Buffer.from(rebuilt.data).equals(Buffer.from(entry.file.data as Uint8Array));
+    ok(`${entry.options.format}: the reproduce link rebuilds the file`, same, entry.file.filename);
+  }
+
+  // Sizes, and the seed on its way to a path.
+  ok("size is clamped", buildPackage({ seed: "x", size: 999 }).entries.length <= MAX_PACKAGE_FILES);
+  ok("a single-file package works", buildPackage({ seed: "x", size: 1 }).entries.length === 1);
+  const hostile = buildPackage({ seed: "../../../../tmp/pwned", size: 3 });
+  ok("a hostile package seed is neutralised", !hostile.filename.includes(".."), hostile.filename);
+  ok("its members stay put",
+    readZip(hostile.data as Uint8Array).every((m) => !m.name.includes("..")),
+    hostile.filename);
+}
+
+/* ── 8. data types ───────────────────────────────────────────────────────── */
+console.log("\n8. data types");
+{
+  const ids = new Set<string>();
+  const RESERVED = ["type", "geometry", "properties", "coordinates", "bbox"];
+
+  for (const profile of PROFILES) {
+    const label = profile.id.padEnd(22);
+    ok(`${label} id is unique`, !ids.has(profile.id), profile.id);
+    ids.add(profile.id);
+
+    // The generic profile is a hand-written function, not a field list.
+    if (profile.id !== DEFAULT_PROFILE) {
+      const names = profile.fields.map((f) => f.name);
+      ok(`${label} has a real schema`, names.length >= 8 && names.length <= 14, `${names.length} fields`);
+      ok(`${label} field names are unique`, new Set(names).size === names.length);
+      ok(`${label} avoids GeoJSON member names`,
+        !names.some((n) => RESERVED.includes(n)),
+        names.filter((n) => RESERVED.includes(n)).join(","));
+      // Not per profile: a cadastral export really does use ten-character
+      // names, because it has been round-tripping through DBF since 1994.
+    }
+    ok(`${label} apt problems exist`,
+      profile.apt.every((id) => PROBLEMS.some((p) => p.id === id)),
+      profile.apt.filter((id) => !PROBLEMS.some((p) => p.id === id)).join(","));
+
+    // Every data type has to survive the writers that introspect properties.
+    const shape = profileShape(profile);
+    const geo = generate(opts({ profile: profile.id, shape, count: 40 }));
+    try { JSON.parse(geo.data as string); ok(`${label} geojson parses`, true); }
+    catch (e: any) { ok(`${label} geojson parses`, false, e.message); }
+    ok(`${label} keeps its natural shape`,
+      !geo.notes.some((n) => n.includes("does not come as")),
+      geo.notes.find((n) => n.includes("does not come as")) ?? "");
+
+    const csv = generate(opts({ profile: profile.id, shape, count: 40, format: "csv" }));
+    const rows = (csv.data as string).trimEnd().split("\n");
+    const cols = rows[0].split(",").length;
+    ok(`${label} csv is rectangular`,
+      rows.every((r) => splitCsv(r).length === cols),
+      `${cols} columns`);
+
+    const shp = generate(opts({ profile: profile.id, shape, count: 40, format: "shapefile" }));
+    const err = checkShapefile(shp.data as Uint8Array);
+    ok(`${label} shapefile structure`, !err, err ?? "");
+
+    ok(`${label} is deterministic`,
+      generate(opts({ profile: profile.id, shape, count: 40 })).data === geo.data);
+  }
+
+  // Long field names are what makes the DBF 10-character limit a real test, so
+  // the catalogue as a whole has to carry plenty of them.
+  const longNames = PROFILES.flatMap((p) => p.fields.map((f) => f.name)).filter((n) => n.length > 10);
+  ok("the catalogue exercises DBF truncation", longNames.length >= 40, `${longNames.length} long names`);
+
+  console.log(`  ${PROFILES.length} data types built in geojson, csv and shapefile`);
+
+  // Domain problems: they must apply where they claim to, and nowhere else.
+  const domain = PROBLEMS.filter((p) => p.profiles);
+  ok("there are domain problems at all", domain.length > 0, `${domain.length}`);
+  for (const problem of domain) {
+    ok(`${problem.id}: names real data types`,
+      problem.profiles!.every((id) => PROFILES.some((p) => p.id === id)),
+      problem.profiles!.filter((id) => !PROFILES.some((p) => p.id === id)).join(","));
+
+    const host = getProfile(problem.profiles![0]);
+    const format = problem.appliesTo?.[0] ?? "geojson";
+    const file = generate(opts({
+      profile: host.id,
+      shape: profileShape(host),
+      format: format as FormatId,
+      problems: [problem.id],
+      count: 60,
+      intensity: 0.5,
+    }));
+    ok(`${problem.id}: applies to ${host.id}`,
+      file.stats.problems.includes(problem.id),
+      file.stats.problems.join(","));
+    ok(`${problem.id}: says what it did`, file.notes.length > 0);
+
+    // And the same problem asked for under a data type that has no such thing
+    // is refused rather than quietly invented.
+    if (!problem.profiles!.includes(DEFAULT_PROFILE)) {
+      const wrong = generate(opts({ problems: [problem.id], count: 20 }));
+      ok(`${problem.id}: skipped on a generic export`,
+        !wrong.stats.problems.includes(problem.id),
+        wrong.stats.problems.join(","));
+      ok(`${problem.id}: and says so`,
+        wrong.notes.some((n) => n.includes("doesn't have")),
+        wrong.notes.join(" | ").slice(0, 80));
+    }
+  }
+  console.log(`  ${domain.length} domain problems checked against their data types`);
+
+  // The data type has to survive the share link, or a fixture is not shareable.
+  for (const profile of PROFILES) {
+    const config = opts({ profile: profile.id, count: 10 });
+    const round = decodeConfig("#" + encodeConfig(config));
+    ok(`${profile.id.padEnd(22)} survives a share link`, (round.profile ?? DEFAULT_PROFILE) === profile.id, String(round.profile));
+  }
+
+  // Every family is represented, and every data type is reachable from the UI.
+  for (const family of FAMILIES) {
+    ok(`family ${family.id} has data types`, profilesInFamily(family.id).length > 0);
+  }
+}
 
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures) { console.log(`${failures} FAILURES`); process.exit(1); }

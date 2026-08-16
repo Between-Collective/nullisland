@@ -1,3 +1,6 @@
+export const SITE_HOST = "nullisland.app";
+export const SITE_URL = `https://${SITE_HOST}`;
+
 export const REPO_URL = "https://github.com/Between-Collective/nullisland";
 export const ISSUES_URL = `${REPO_URL}/issues`;
 export const NEW_ISSUE_URL = `${REPO_URL}/issues/new`;

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Button } from "./ui";
 import { getFormat } from "@/lib/formats/index";
-import { appliesTo, CATEGORY_LABELS, CATEGORY_ORDER, PROBLEMS } from "@/lib/problems";
+import { appliesTo, appliesToProfile, CATEGORY_LABELS, CATEGORY_ORDER, PROBLEMS } from "@/lib/problems";
+import { getProfile } from "@/lib/profiles/index";
 import type { FormatId, ProblemCategory } from "@/lib/types";
 
 // Written out rather than built from the category id so Tailwind's scanner
@@ -53,23 +54,32 @@ function FilterPill({
 export function ProblemGrid({
   selected,
   format,
+  profile,
   onToggle,
   onPickRandom,
   onSelectAll,
   onClear,
+  onPickTypical,
 }: {
   selected: string[];
   format: FormatId;
+  profile: string;
   onToggle: (id: string) => void;
   onPickRandom: (howMany: number) => void;
   onSelectAll: () => void;
   onClear: () => void;
+  onPickTypical: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const chosen = new Set(selected);
   const formatLabel = getFormat(format).label;
+  const dataType = getProfile(profile);
 
-  const visible = PROBLEMS.filter((p) => filter === "all" || p.category === filter);
+  // The catalogue is the general problems plus the ones this data type brings
+  // with it. Another type's problems are not hidden so much as absent: they do
+  // not exist in this data.
+  const catalogue = PROBLEMS.filter((p) => appliesToProfile(p, profile));
+  const visible = catalogue.filter((p) => filter === "all" || p.category === filter);
 
   return (
     <div>
@@ -77,10 +87,18 @@ export function ProblemGrid({
         <div className="flex items-center gap-2.5">
           <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">Problems</h2>
           <span className="rounded-full bg-paper px-2 py-0.5 font-mono text-[11px] text-muted">
-            {selected.length}/{PROBLEMS.length}
+            {selected.length}/{catalogue.length}
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
+          {dataType.apt.length > 0 && (
+            <Button
+              onClick={onPickTypical}
+              title={`What ${dataType.label} files actually arrive with`}
+            >
+              Typical for {dataType.label}
+            </Button>
+          )}
           <Button onClick={() => onPickRandom(1)} title="Pick exactly one at random">
             Random 1
           </Button>
@@ -105,7 +123,7 @@ export function ProblemGrid({
       <div className="mb-4 flex flex-wrap gap-1.5">
         <FilterPill
           label="All"
-          count={PROBLEMS.length}
+          count={catalogue.length}
           active={filter === "all"}
           onClick={() => setFilter("all")}
         />
@@ -113,7 +131,7 @@ export function ProblemGrid({
           <FilterPill
             key={category}
             label={CATEGORY_LABELS[category]}
-            count={PROBLEMS.filter((p) => p.category === category).length}
+            count={catalogue.filter((p) => p.category === category).length}
             dot={DOT[category]}
             active={filter === category}
             onClick={() => setFilter(category)}
@@ -161,11 +179,12 @@ export function ProblemGrid({
                   <span className="mt-1 block text-[11.5px] leading-snug text-muted">
                     {problem.blurb}
                   </span>
-                  {!usable && (
-                    <span className="mt-1.5 block font-mono text-[10px] text-dim">
-                      not in {formatLabel}
-                    </span>
-                  )}
+                  <span className="mt-1.5 flex flex-wrap gap-x-2 font-mono text-[10px]">
+                    {problem.profiles && (
+                      <span className="text-mint-ink">{dataType.label} only</span>
+                    )}
+                    {!usable && <span className="text-dim">not in {formatLabel}</span>}
+                  </span>
                 </span>
               </span>
             </button>

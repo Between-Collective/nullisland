@@ -1,6 +1,7 @@
 import { BOUNDARY_IDS } from "./boundary";
 import { FORMATS } from "./formats/index";
 import { PROBLEMS } from "./problems";
+import { DEFAULT_PROFILE, PROFILES } from "./profiles/index";
 import { REGIONS } from "./regions";
 import type { BoundaryId, FormatId, GenerateOptions, ShapeId } from "./types";
 
@@ -17,6 +18,9 @@ export function encodeConfig(opts: GenerateOptions): string {
   params.set("n", String(opts.count));
   params.set("g", opts.shape);
   params.set("r", opts.region);
+  // Omitted when generic, so links made before data types existed still decode
+  // to the schema they were generated with.
+  if (opts.profile && opts.profile !== DEFAULT_PROFILE) params.set("d", opts.profile);
   params.set("i", String(Math.round(opts.intensity * 100)));
   params.set("s", opts.seed);
   if (!opts.pretty) params.set("c", "1");
@@ -44,6 +48,9 @@ export function decodeConfig(hash: string): Partial<GenerateOptions> {
 
   const region = params.get("r");
   if (region && REGIONS.some((r) => r.id === region)) out.region = region;
+
+  const profile = params.get("d");
+  if (profile && PROFILES.some((p) => p.id === profile)) out.profile = profile;
 
   const intensity = Number(params.get("i"));
   if (Number.isFinite(intensity)) out.intensity = Math.max(0.05, Math.min(1, intensity / 100));

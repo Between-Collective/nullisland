@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Contribute } from "./Contribute";
 import { HeroPanel } from "./HeroPanel";
 import { OutputPanel } from "./OutputPanel";
+import { PackagePanel } from "./PackagePanel";
 import { ProblemGrid } from "./ProblemGrid";
 import { Sidebar } from "./Sidebar";
 import { Button, Card } from "./ui";
@@ -11,7 +12,9 @@ import { BOUNDARY_IDS } from "@/lib/boundary";
 import { copyFile, downloadFile } from "@/lib/download";
 import { FORMATS, getFormat } from "@/lib/formats/index";
 import { generate, MAX_FEATURES } from "@/lib/generate";
-import { appliesTo, PROBLEMS } from "@/lib/problems";
+import { buildPackage, type GeneratedPackage } from "@/lib/package";
+import { appliesTo, appliesToProfile, domainProblems, EXCLUSIVE_PROBLEM, PROBLEMS } from "@/lib/problems";
+import { DEFAULT_PROFILE, getProfile, PROFILES, profileShape } from "@/lib/profiles/index";
 import { REGIONS } from "@/lib/regions";
 import { randomSeed } from "@/lib/rng";
 import { decodeConfig, encodeConfig } from "@/lib/share";
@@ -23,12 +26,6 @@ const COUNT_STEPS = [
 
 const SHAPES: ShapeId[] = ["point", "line", "polygon", "mixed"];
 const JSON_FORMATS: FormatId[] = ["geojson", "ndjson", "topojson"];
-
-/**
- * Wiping the dataset hides every other problem in the file, so the bulk
- * selectors leave it out. Picking it on purpose still works.
- */
-const EXCLUSIVE = "empty-dataset";
 
 /**
  * Above this, a shared link asks before it generates.
@@ -46,6 +43,7 @@ const DEFAULTS: GenerateOptions = {
   count: 500,
   shape: "point",
   region: "london",
+  profile: DEFAULT_PROFILE,
   problems: ["coincident", "precision-drift", "mixed-schema"],
   intensity: 0.4,
   // Replaced with a random one on mount; a constant keeps SSR and the first
@@ -75,7 +73,7 @@ interface Result {
   error: string | null;
 }
 
-type FlashAction = "share" | "copy" | "download" | "boundary";
+type FlashAction = "share" | "copy" | "download" | "boundary" | "package";
 
 /**
  * Which control just did something, and whether it worked. Held as an object so
@@ -92,6 +90,9 @@ export function Generator() {
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULTS);
   const [result, setResult] = useState<Result>({ source: null, file: null, error: null });
   const [flash, setFlash] = useState<Flash | null>(null);
+  const [pkg, setPkg] = useState<GeneratedPackage | null>(null);
+  const [packageSize, setPackageSize] = useState(9);
+  const [packageBusy, setPackageBusy] = useState(false);
   // Set only from a URL, and cleared by the user's first deliberate action.
   const [heldBack, setHeldBack] = useState(0);
   const hydrated = useRef(false);
@@ -107,7 +108,17 @@ export function Generator() {
     // Touching any control is the user taking the wheel, so the link's hold
     // no longer applies.
     setHeldBack(0);
-    setOpts((current) => ({ ...current, ...next }));
+    setOpts((current) => {
+      const merged = { ...current, ...next };
+      // A data type brings its own geometry: flight tracks are lines, parcels
+      // are polygons. Choosing one and getting "this does not come as points"
+      // would be the app arguing with a choice it just offered. Changing the
+      // geometry afterwards still works, and the file still says so.
+      if (next.profile && next.shape === undefined && next.profile !== DEFAULT_PROFILE) {
+        merged.shape = profileShape(getProfile(next.profile));
+      }
+      return merged;
+    });
   }, []);
 
   // The seed and the shared URL both live outside React and are only readable
@@ -175,24 +186,32 @@ export function Generator() {
     }));
   }, []);
 
-  const applicable = PROBLEMS.filter((p) => appliesTo(p, opts.format));
+  const applicable = PROBLEMS.filter(
+    (p) => appliesTo(p, opts.format) && appliesToProfile(p, opts.profile),
+  );
 
   const pickRandomProblems = (howMany: number) => {
     // A single random pick may legitimately be the empty-result case; a random
     // handful should not have every other choice erased by it.
-    const source = howMany === 1 ? applicable : applicable.filter((p) => p.id !== EXCLUSIVE);
+    const source = howMany === 1 ? applicable : applicable.filter((p) => p.id !== EXCLUSIVE_PROBLEM);
     const pool = source.map((p) => p.id).sort(() => Math.random() - 0.5);
     patch({ problems: pool.slice(0, howMany) });
   };
 
   const randomiseEverything = () => {
     const format = randomFrom(FORMATS).id;
-    const pool = PROBLEMS.filter((p) => appliesTo(p, format) && p.id !== EXCLUSIVE).map((p) => p.id);
+    const profile = randomFrom(PROFILES);
+    const pool = PROBLEMS.filter(
+      (p) => appliesTo(p, format) && appliesToProfile(p, profile.id) && p.id !== EXCLUSIVE_PROBLEM,
+    ).map((p) => p.id);
     setOpts({
       format,
       count: randomFrom(COUNT_STEPS.slice(3, 11)),
-      shape: randomFrom(SHAPES),
+      // The data type brings its own geometry: rolling flight tracks and
+      // getting polygons would be a roll of something that does not exist.
+      shape: profile.id === DEFAULT_PROFILE ? randomFrom(SHAPES) : profileShape(profile),
       region: randomFrom(REGIONS).id,
+      profile: profile.id,
       problems: pool.sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(Math.random() * 7)),
       intensity: 0.2 + Math.random() * 0.6,
       seed: randomSeed(),
@@ -201,6 +220,29 @@ export function Generator() {
       boundary: Math.random() < 0.4 ? randomFrom(BOUNDARY_IDS.slice(1)) : "none",
       coverage: 0.25 + Math.random() * 0.5,
     });
+  };
+
+  /**
+   * A package is a dozen generations back to back, which is long enough to
+   * freeze the tab — so it never rides along with the debounce, only a press.
+   * The timeout is there to let the busy label paint before the main thread
+   * disappears into the work.
+   */
+  const buildPack = () => {
+    setPackageBusy(true);
+    setTimeout(() => {
+      try {
+        setPkg(buildPackage({ seed: randomSeed(), size: packageSize }));
+      } catch (cause) {
+        setFlash({
+          action: "package",
+          message: cause instanceof Error ? cause.message : "Package failed",
+          ok: false,
+        });
+      } finally {
+        setPackageBusy(false);
+      }
+    }, 30);
   };
 
   const share = async () => {
@@ -347,14 +389,36 @@ export function Generator() {
           </div>
         )}
 
+        <div className="mt-3">
+          <PackagePanel
+            pkg={pkg}
+            busy={packageBusy}
+            size={packageSize}
+            onSize={setPackageSize}
+            onBuild={buildPack}
+          />
+        </div>
+
         <div className="mt-8">
           <ProblemGrid
             selected={opts.problems}
             format={opts.format}
+            profile={opts.profile}
             onToggle={toggleProblem}
+            onPickTypical={() =>
+              patch({
+                // What this data type is known for: the general problems it
+                // ships with, plus a few of its own. Not all of its own — a
+                // dozen at once stops being a fixture and starts being noise.
+                problems: [
+                  ...getProfile(opts.profile).apt,
+                  ...domainProblems(opts.profile).slice(0, 3).map((p) => p.id),
+                ].filter((id) => applicable.some((p) => p.id === id)),
+              })
+            }
             onPickRandom={pickRandomProblems}
             onSelectAll={() =>
-              patch({ problems: applicable.filter((p) => p.id !== EXCLUSIVE).map((p) => p.id) })
+              patch({ problems: applicable.filter((p) => p.id !== EXCLUSIVE_PROBLEM).map((p) => p.id) })
             }
             onClear={() => patch({ problems: [] })}
           />

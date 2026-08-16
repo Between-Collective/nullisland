@@ -77,6 +77,12 @@ export interface Problem {
   phase: ProblemPhase;
   /** Formats that can express this problem. Omitted means "all of them". */
   appliesTo?: FormatId[];
+  /**
+   * Data types this problem exists in. Omitted means "all of them" — the
+   * catalogue of general problems. A listed one is domain-specific: an AIS
+   * sentinel position is not a thing that happens to a parcel export.
+   */
+  profiles?: string[];
 }
 
 export interface GenerateOptions {
@@ -84,6 +90,8 @@ export interface GenerateOptions {
   count: number;
   shape: ShapeId;
   region: string;
+  /** Which data type the attributes and geometry imitate. See lib/profiles. */
+  profile: string;
   problems: string[];
   /** 0–1. How much of the dataset each selected problem is allowed to touch. */
   intensity: number;
@@ -159,5 +167,7 @@ export interface GeneratedFile extends FilePayload {
   stats: {
     features: number;
     problems: string[];
+    /** The data type this file imitates. */
+    profile: string;
   };
 }

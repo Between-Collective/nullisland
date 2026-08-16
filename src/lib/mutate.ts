@@ -9,58 +9,11 @@ import {
   signedArea,
   toWebMercator,
 } from "./geo";
+import { clone, note, ringsOf, setOwn, targets, type Ctx, type Transform } from "./kit";
+import { DOMAIN_ORDER } from "./domain";
 import { getRegion } from "./regions";
 import type { Rng } from "./rng";
-import type { Dataset, Feature, GenerateOptions, Geometry, Position } from "./types";
-
-interface Ctx {
-  rng: Rng;
-  opts: GenerateOptions;
-  ds: Dataset;
-  /** Fraction of features a problem should touch, from the intensity slider. */
-  share: number;
-}
-
-type Transform = (ctx: Ctx) => void;
-
-/* ── helpers ─────────────────────────────────────────────────────────────── */
-
-/** Indices of the features a transform should touch, always at least one. */
-function targets(ctx: Ctx, shareOverride?: number, cap = Infinity): number[] {
-  const n = ctx.ds.features.length;
-  if (n === 0) return [];
-  const share = Math.max(0.01, Math.min(1, shareOverride ?? ctx.share));
-  const wanted = Math.min(cap, Math.max(1, Math.round(n * share)));
-  const indices = Array.from({ length: n }, (_, i) => i);
-  return ctx.rng.sample(indices, wanted).sort((a, b) => a - b);
-}
-
-function note(ctx: Ctx, text: string): void {
-  if (!ctx.ds.notes.includes(text)) ctx.ds.notes.push(text);
-}
-
-function ringsOf(geometry: Geometry | null): Position[][] {
-  if (!geometry) return [];
-  if (geometry.type === "Polygon") return (geometry.coordinates as Position[][]) ?? [];
-  if (geometry.type === "MultiPolygon") {
-    return ((geometry.coordinates as Position[][][]) ?? []).flat();
-  }
-  return [];
-}
-
-/** Assigns a key that a plain literal would treat as the prototype setter. */
-function setOwn(target: Record<string, any>, key: string, value: any): void {
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  });
-}
-
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
+import type { Dataset, Feature, GenerateOptions, Position } from "./types";
 
 /* ── coordinates ─────────────────────────────────────────────────────────── */
 
@@ -700,6 +653,12 @@ const ORDER: Array<[string, Transform]> = [
   ["empty-dataset", emptyDataset],
 ];
 
+/**
+ * Domain problems run first: they are part of what the data *is*, and the
+ * general catalogue is then free to corrupt the result on top of them.
+ */
+const ALL: Array<[string, Transform]> = [...DOMAIN_ORDER, ...ORDER];
+
 export function applyProblems(ds: Dataset, ids: string[], opts: GenerateOptions, rng: Rng): void {
   const selected = new Set(ids);
   const ctx: Ctx = {
@@ -708,11 +667,11 @@ export function applyProblems(ds: Dataset, ids: string[], opts: GenerateOptions,
     ds,
     share: Math.max(0.02, Math.min(1, opts.intensity)),
   };
-  for (const [id, transform] of ORDER) {
+  for (const [id, transform] of ALL) {
     if (selected.has(id)) transform(ctx);
   }
 }
 
-export const DATA_PROBLEM_IDS = ORDER.map(([id]) => id);
+export const DATA_PROBLEM_IDS = ALL.map(([id]) => id);
 export type { Feature };
 export { forEachPosition };

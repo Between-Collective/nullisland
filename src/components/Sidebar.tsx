@@ -4,6 +4,7 @@ import { Wordmark } from "./Logo";
 import { Field, Segmented, type Option } from "./ui";
 import { BOUNDARIES, coversWorld, regionExtent } from "@/lib/boundary";
 import { FORMATS } from "@/lib/formats/index";
+import { FAMILIES, getProfile, profilesInFamily, profileShape } from "@/lib/profiles/index";
 import { getRegion, REGIONS } from "@/lib/regions";
 import type { BoundaryId, FormatId, GenerateOptions, ShapeId } from "@/lib/types";
 
@@ -71,6 +72,8 @@ export function Sidebar({
   countIndex: number;
 }) {
   const isWorldWide = coversWorld(regionExtent(getRegion(opts.region)));
+  const profile = getProfile(opts.profile);
+  const natural = profileShape(profile);
 
   return (
     <aside className="order-2 flex flex-col gap-6 border-line bg-card p-4 sm:p-5 lg:order-1 lg:h-full lg:border-r">
@@ -97,6 +100,40 @@ export function Sidebar({
             />
           ))}
         </div>
+      </div>
+
+      {/* What the file is *of*, as opposed to what it is. Sits with Format
+          because the two together decide what a reader has to cope with. */}
+      <div className="space-y-2.5 border-t border-line pt-5">
+        <Field label="Data type">
+          <select
+            value={opts.profile}
+            onChange={(e) => patch({ profile: e.target.value })}
+            aria-label="Data type"
+            className="w-full rounded-full border border-line-strong bg-white px-3.5 py-2 text-[12px] text-ink"
+          >
+            {FAMILIES.map((family) => {
+              const inFamily = profilesInFamily(family.id);
+              if (!inFamily.length) return null;
+              return (
+                <optgroup key={family.id} label={family.label}>
+                  {inFamily.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
+          </select>
+        </Field>
+        <p className="text-[11.5px] leading-relaxed text-muted">{profile.blurb}</p>
+        {natural !== opts.shape && opts.shape !== "mixed" && (
+          <p className="text-[11.5px] leading-relaxed text-dim">
+            {profile.label} data comes as {natural}s. The geometry control is set to {opts.shape}s,
+            so the shapes are generic and the file says so.
+          </p>
+        )}
       </div>
 
       <div className="space-y-5 border-t border-line pt-5">

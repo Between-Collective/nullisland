@@ -10,6 +10,7 @@ import {
   type Boundary,
 } from "./boundary";
 import { utf8 } from "./bytes";
+import { excelRoundtrip, unquotedCommas } from "./domain";
 import { forEachPosition } from "./geo";
 import { getRegion } from "./regions";
 import { writeCSV } from "./formats/csv";
@@ -19,7 +20,8 @@ import { writeShapefile } from "./formats/shapefile";
 import { writeWKT } from "./formats/wkt";
 import { writeGPX, writeKML } from "./formats/xml";
 import { applyProblems } from "./mutate";
-import { appliesTo, getProblem } from "./problems";
+import { appliesTo, appliesToProfile, getProblem } from "./problems";
+import { getProfile } from "./profiles/index";
 import { normaliseSeed, Rng } from "./rng";
 import { addBom, injectNanLiterals, malformJson, mixLineEndings, mojibakeStrings } from "./text";
 import type {
@@ -73,6 +75,18 @@ function applyTextProblems(
   }
   if (ids.has("nan-literal") && isJson) {
     const result = injectNanLiterals(out, rng);
+    out = result.text;
+    notes.push(...result.notes);
+  }
+  // Domain text problems: an exporter that forgot to quote, and the spreadsheet
+  // somebody opened the result in. Both are CSV facts, so they run on the CSV.
+  if (ids.has("broken-csv-quoting") && opts.format === "csv") {
+    const result = unquotedCommas(out);
+    out = result.text;
+    notes.push(...result.notes);
+  }
+  if (ids.has("excel-roundtrip") && opts.format === "csv") {
+    const result = excelRoundtrip(out);
     out = result.text;
     notes.push(...result.notes);
   }
@@ -247,13 +261,17 @@ export function generate(options: GenerateOptions): GeneratedFile {
   const rng = new Rng(opts.seed);
   const format = getFormat(opts.format);
 
-  // Split the selection: what this format can express, and what it can't.
+  // Split the selection three ways: what this format can express, what it
+  // can't, and what belongs to a data type that isn't loaded.
   const usable: string[] = [];
   const skipped: string[] = [];
+  const foreign: string[] = [];
   for (const id of opts.problems) {
     const problem = getProblem(id);
     if (!problem) continue;
-    (appliesTo(problem, opts.format) ? usable : skipped).push(id);
+    if (!appliesToProfile(problem, opts.profile)) foreign.push(id);
+    else if (appliesTo(problem, opts.format)) usable.push(id);
+    else skipped.push(id);
   }
 
   const dataIds = usable.filter((id) => getProblem(id)?.phase === "data");
@@ -289,6 +307,14 @@ export function generate(options: GenerateOptions): GeneratedFile {
   if (skipped.length) {
     ds.notes.push(
       `${format.label} can't express: ${skipped
+        .map((id) => getProblem(id)?.label ?? id)
+        .join(", ")}. Skipped.`,
+    );
+  }
+
+  if (foreign.length) {
+    ds.notes.push(
+      `${getProfile(opts.profile).label} data doesn't have: ${foreign
         .map((id) => getProblem(id)?.label ?? id)
         .join(", ")}. Skipped.`,
     );
@@ -346,6 +372,6 @@ export function generate(options: GenerateOptions): GeneratedFile {
     notes: ds.notes,
     map,
     boundary: boundaryOutput,
-    stats: { features: ds.features.length, problems: usable },
+    stats: { features: ds.features.length, problems: usable, profile: opts.profile },
   };
 }

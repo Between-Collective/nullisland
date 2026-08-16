@@ -1,33 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { boundarySpread, samplePosition, type Boundary } from "./boundary";
 import { closeRing, round, wrapLon } from "./geo";
+import { datasetClock } from "./profiles/fields";
+import { profileGeometry } from "./profiles/geometry";
+import { buildProfileProperties, getProfile, profileNote, profileShape } from "./profiles/index";
 import { getRegion, REGIONS, type Region } from "./regions";
 import type { Rng } from "./rng";
 import type { Dataset, Feature, GenerateOptions, Geometry, Position } from "./types";
-
-const ADJECTIVES = [
-  "North", "South", "East", "West", "Upper", "Lower", "Old", "New", "Great",
-  "Little", "Inner", "Outer", "Central", "Royal", "Kings", "Queens", "Saint",
-];
-
-const NOUNS = [
-  "Wharf", "Bridge", "Market", "Common", "Yard", "Green", "Mill", "Quay",
-  "Gate", "Hill", "Field", "Park", "Bank", "Cross", "Grove", "Court", "Depot",
-];
-
-const SUFFIXES = ["Site", "Depot", "Node", "Unit", "Station", "Point", "Works", "Hub"];
-
-const CATEGORIES = [
-  "retail", "logistics", "residential", "industrial", "civic",
-  "transport", "utilities", "leisure",
-];
-
-const STATUSES = ["active", "inactive", "pending", "decommissioned"];
-
-/** A plausible-looking label so the output reads like a real export. */
-function makeName(rng: Rng): string {
-  return `${rng.pick(ADJECTIVES)} ${rng.pick(NOUNS)} ${rng.pick(SUFFIXES)}`;
-}
 
 /** Anchor for one feature: a fixed region, or a random city when world-wide. */
 function anchorFor(rng: Rng, region: Region): [number, number, number] {
@@ -100,24 +78,6 @@ export function buildGeometry(
   }
 }
 
-function buildProperties(rng: Rng, index: number): Record<string, any> {
-  const day = rng.int(1, 28);
-  const month = rng.int(1, 12);
-  const year = rng.int(2019, 2026);
-  return {
-    id: index + 1,
-    name: makeName(rng),
-    category: rng.pick(CATEGORIES),
-    status: rng.pick(STATUSES),
-    value: round(rng.float(0, 25000), 2),
-    count: rng.int(0, 480),
-    verified: rng.bool(0.65),
-    updated_at: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(
-      rng.int(0, 23),
-    ).padStart(2, "0")}:${String(rng.int(0, 59)).padStart(2, "0")}:00Z`,
-  };
-}
-
 /**
  * Which features are aimed inside the boundary. Shuffled rather than taken in
  * order: a run of inside features followed by a run of outside ones would let a
@@ -144,12 +104,19 @@ export function buildBase(
   boundary: Boundary | null = null,
 ): Dataset {
   const region = getRegion(opts.region);
+  const profile = getProfile(opts.profile);
   const features: Feature[] = [];
+  const notes: string[] = [];
   const kinds: Array<"point" | "line" | "polygon"> =
     opts.shape === "mixed" ? ["point", "line", "polygon"] : [opts.shape];
 
   const plan = boundary ? coveragePlan(rng, opts.count, opts.coverage) : null;
   const fixedSpread = boundary ? boundarySpread(boundary) : 0;
+
+  // Drawn only for field-driven profiles: the generic schema predates all of
+  // this, and an extra draw here would change every fixture it ever produced.
+  const clock = profile.build ? { start: 0, span: 0 } : datasetClock(rng);
+  let generically = 0;
 
   for (let i = 0; i < opts.count; i++) {
     const kind = kinds.length === 1 ? kinds[0] : rng.pick(kinds);
@@ -164,15 +131,50 @@ export function buildBase(
       origin = scatter(rng, region);
     }
 
+    const size = spread || 0.2;
+    // A data type only claims the geometry it really comes in. Asked for
+    // polygons from a profile that ships tracks, it says so and steps aside.
+    let geometry = profileGeometry(profile.geometry, rng, kind, origin, size);
+    if (!geometry) {
+      geometry = buildGeometry(rng, kind, origin, size);
+      generically++;
+    }
+
     features.push({
       type: "Feature",
       id: i + 1,
-      geometry: buildGeometry(rng, kind, origin, spread || 0.2),
-      properties: buildProperties(rng, i),
+      geometry,
+      properties: buildProfileProperties(profile, rng, {
+        rng,
+        index: i,
+        count: opts.count,
+        position: origin,
+        clock,
+      }),
     });
   }
 
-  return { features, extras: {}, notes: [] };
+  if (!profile.build) {
+    notes.push(profileNote(profile));
+    const empties = features.filter((f) =>
+      Object.values(f.properties ?? {}).some((v) => v === null),
+    ).length;
+    if (empties) {
+      notes.push(
+        `${empties.toLocaleString()} feature(s) leave at least one attribute empty, ` +
+          "which is what the real feed does rather than a problem that was selected.",
+      );
+    }
+    if (generically) {
+      notes.push(
+        `${profile.label} data does not come as ${opts.shape === "mixed" ? "mixed geometry" : `${opts.shape}s`}. ` +
+          `${generically.toLocaleString()} feature(s) use the generic ${opts.shape} builder instead — ` +
+          `the shape this data really has is ${profileShape(profile)}.`,
+      );
+    }
+  }
+
+  return { features, extras: {}, notes };
 }
 
-export { anchorFor, makeName, makeLineString, makePolygonRing, scatter, CATEGORIES, STATUSES };
+export { anchorFor, makeLineString, makePolygonRing, scatter };
