@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Contribute } from "./Contribute";
 import { HeroPanel } from "./HeroPanel";
+import { HowToUse } from "./HowToUse";
 import { OutputPanel } from "./OutputPanel";
 import { PackagePanel } from "./PackagePanel";
 import { ProblemGrid } from "./ProblemGrid";
@@ -423,6 +424,8 @@ export function Generator() {
             onClear={() => patch({ problems: [] })}
           />
         </div>
+
+        <HowToUse />
 
         <Contribute />
       </main>

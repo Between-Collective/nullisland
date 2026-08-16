@@ -4,7 +4,7 @@ import { boundaryContains } from "../src/lib/boundary";
 import { FORMATS } from "../src/lib/formats/index";
 import { signedArea } from "../src/lib/geo";
 import { buildPackage, MAX_PACKAGE_FILES } from "../src/lib/package";
-import { PROBLEMS, appliesTo } from "../src/lib/problems";
+import { PROBLEMS, appliesTo, getProblem } from "../src/lib/problems";
 import {
   DEFAULT_PROFILE,
   FAMILIES,
@@ -719,6 +719,14 @@ console.log("\n7. packages");
     pack.entries.every((e) => e.options.shape === profileShape(getProfile(e.options.profile))));
   ok("the readme names the data types",
     pack.entries.every((e) => pack.readme.includes(e.profileLabel)));
+
+  // A package of nine schemas that break in nine generic ways would waste the
+  // schemas, so every file carries at least one problem of its own kind.
+  const withDomain = pack.entries.filter((e) =>
+    e.file.stats.problems.some((id) => getProblem(id)?.profiles));
+  ok("every file breaks in a way particular to its data type",
+    withDomain.length === pack.entries.length,
+    `${withDomain.length} of ${pack.entries.length}`);
 
   const manifest = JSON.parse(pack.manifest);
   ok("manifest lists every file", manifest.files.length === pack.entries.length);

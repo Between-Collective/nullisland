@@ -149,6 +149,12 @@ function planFile(
   // export of its kind rather than a random one wearing its column names.
   const aptPool = pool.filter((p) => profile.apt.includes(p.id));
   if (aptPool.length) chosen.add(rng.pick(aptPool).id);
+  // And one problem that exists *only* in this data type. Left to the random
+  // fill it rarely appears — there are forty-two general problems against a
+  // dozen domain ones — and a package of nine schemas that break in nine
+  // generic ways would waste the schemas.
+  const domainPool = pool.filter((p) => p.profiles);
+  if (domainPool.length) chosen.add(rng.pick(domainPool).id);
   for (const problem of rng.sample(pool, rng.int(2, 6))) chosen.add(problem.id);
 
   const region = rng.bool(0.12) ? "world" : rng.pick(PLACES).id;

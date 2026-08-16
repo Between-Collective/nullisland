@@ -10,6 +10,18 @@ Everything runs in the browser. Nothing is uploaded, nothing is stored, and the 
 
 *Null Island is 0°N 0°E, in the Gulf of Guinea — the spot every record with missing or zeroed coordinates quietly lands on. It is the most-visited place on Earth that does not exist.*
 
+## How to use it
+
+1. **Say what the file is.** Pick a format, and a data type for what it holds — the data type swaps generic columns for a real schema and brings the geometry that goes with it.
+2. **Say what is wrong with it.** Tick problems, or press *Typical* for what that kind of feed actually arrives with. *Chaos* sets how much of the file each problem touches.
+3. **Watch it happen.** The plot redraws as you go; *Fit* against *World* tells "wrong place" from "wrong shape".
+4. **Add a boundary** if you want an answer rather than a picture: a second GeoJSON to filter by, plus the counts `contains` and `intersects` should each return.
+5. **Take the file and its context.** Download or copy the fixture; the dark panel holds a written account of everything wrong with it, for an issue or an agent.
+6. **Make it reproducible.** Every file comes from its seed, so *Share* copies a link that rebuilds it byte for byte. Put the seed in your test suite instead of committing the file.
+7. **Or take a package** — 5, 9 or 18 fixtures in one zip, every format and a spread of data types, with a README and a manifest describing all of them.
+
+A word of warning before you open anything in a spreadsheet: see [Handling what comes out](#handling-what-comes-out).
+
 ## Why bother
 
 The interesting bugs in map software are almost never in the happy path. They're in the file that a council exported from a 2009 GIS install, or the CSV someone opened in Excel first, or the shapefile whose field names got truncated to ten characters. Those files are hard to keep a good library of, and harder still to reduce to a minimal repro.
