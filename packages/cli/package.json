@@ -1,0 +1,47 @@
+{
+  "name": "nullisland",
+  "version": "0.1.0",
+  "description": "Command line generator for deliberately broken geospatial test fixtures.",
+  "license": "MIT",
+  "author": "Between Collective",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Between-Collective/nullisland.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "cli",
+    "geojson",
+    "shapefile",
+    "test data",
+    "fixtures",
+    "geospatial",
+    "map testing"
+  ],
+  "type": "commonjs",
+  "bin": {
+    "nullisland": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "prepublishOnly": "npm run build -w nullisland-core && npm run build",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "nullisland-core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.23.1",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

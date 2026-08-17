@@ -13,12 +13,13 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
+# next.js — not root-anchored: the app lives in apps/web
+.next/
+out/
 
 # production
 /build
+dist/
 
 # misc
 .DS_Store

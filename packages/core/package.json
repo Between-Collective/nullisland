@@ -1,0 +1,53 @@
+{
+  "name": "nullisland-core",
+  "version": "0.1.0",
+  "description": "Generate deliberately broken geospatial fixtures \u2014 GeoJSON, KML, KMZ, GPX, CSV, WKT, TopoJSON, Shapefile \u2014 from a seed.",
+  "license": "MIT",
+  "author": "Between Collective",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Between-Collective/nullisland.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "geojson",
+    "shapefile",
+    "kml",
+    "gpx",
+    "topojson",
+    "wkt",
+    "test data",
+    "fixtures",
+    "geospatial",
+    "map testing"
+  ],
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "prepublishOnly": "npm run build",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "verify": "tsx scripts/verify.ts",
+    "check": "tsc -p tsconfig.json --noEmit && npm run verify"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.23.1",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

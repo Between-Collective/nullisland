@@ -6,7 +6,11 @@ Every geo-viz tool says "bring us whatever you've got". Then a file arrives with
 
 Null Island generates those files on purpose. Pick a format, pick a data type — ADS-B tracks, AIS positions, parcels, census tracts, ad-exchange pings — pick which problems to bake in, and download a fixture. Or randomise it, or take a whole package of them at once.
 
-Everything runs in the browser. Nothing is uploaded, nothing is stored, and the whole thing builds to static files.
+Everything runs in the browser. Nothing is uploaded, nothing is stored, and the whole thing builds to static files. There is a command line too — same generator, same bytes:
+
+```bash
+npx nullisland --type maritime-ais --format csv --typical --count 200
+```
 
 *Null Island is 0°N 0°E, in the Gulf of Guinea — the spot every record with missing or zeroed coordinates quietly lands on. It is the most-visited place on Earth that does not exist.*
 
@@ -53,7 +57,7 @@ Toggle between **Fit** (the data's own bounds) and **World** to see whether the 
 | TopoJSON | `.topojson` | Arc-indexed topology. Most viewers need a conversion step first. |
 | Shapefile | `.zip` | Real `.shp`/`.shx`/`.dbf`/`.prj`/`.cpg`, written byte by byte. |
 
-The shapefile and ZIP writers are hand-rolled — there are no dependencies beyond React and Next.
+The shapefile and ZIP writers are hand-rolled: the generator package has no dependencies at all, and the web app has none beyond React and Next.
 
 Where a format can't express a problem (there is no `crs` member in a CSV), the app says so and skips it rather than pretending. Where a format silently loses data — GPX flattening polygons to tracks, WKT dropping every attribute, a shapefile coercing mixed geometry to null shapes — the output panel tells you exactly what was dropped.
 
@@ -190,18 +194,42 @@ To check everything:
 npm run check
 ```
 
-That runs `tsc --noEmit`, ESLint, and `scripts/verify.ts` — 1,561 assertions covering every problem in every format it applies to, plus binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (1,570 assertions) and the CLI smoke test (49 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 The boundary checks are deliberately paranoid: every reported count is re-derived with an independent point-in-polygon pass over the written file, because a ground truth you can't trust is worse than none at all.
 
-`npm run build` produces a fully static site in `out/`, deployable to any static host.
+`npm run build` builds the core package and produces a fully static site in `apps/web/out/`, deployable to any static host.
+
+## Layout
+
+Three workspaces, one implementation of the generator:
+
+```
+packages/core/   nullisland-core — the generator. No dependencies, no DOM.
+packages/cli/    nullisland — the command line, a thin front for core.
+apps/web/        nullisland.app — the Next app, importing core.
+```
+
+The split is by layer rather than by language on purpose. The promise this tool makes is that a seed reproduces a file byte for byte, which is what lets a share link become a test case — and two implementations in two languages could not hold that without a conformance suite policing every new problem forever. So there is one generator, and the CLI and the web app are both thin.
+
+## The command line
+
+```bash
+npx nullisland --list types
+npx nullisland --type cadastral-parcels --format shapefile --typical --out fixtures
+npx nullisland --package 9 --extract --out test/fixtures --seed sand-frost-ember
+npx nullisland --from-url 'https://nullisland.app/#f=geojson&d=flight-adsb&s=quartz-harbor-drift'
+npx nullisland --format geojson --count 20 --json | jq '.notes'
+```
+
+`--from-url` is the one worth knowing: build a fixture by clicking, copy the share link, and the CLI rebuilds that exact file in CI. `--json` prints the counts, the bounds, the off-world tally and the notes, so a test can assert on what it was given. Full options in [packages/cli/README.md](packages/cli/README.md).
 
 ## Using the generator without the UI
 
-`src/lib` has no React or Next dependency, so it runs in Node or any bundler:
+`nullisland-core` has no dependencies and no DOM, so it runs in Node, in a bundler, or in a browser:
 
 ```ts
-import { generate } from "./src/lib/generate";
+import { generate } from "nullisland-core";
 
 const file = generate({
   format: "geojson",
@@ -223,7 +251,7 @@ file.notes;    // what was done, and what the format silently dropped
 Packages come from the same place:
 
 ```ts
-import { buildPackage } from "./src/lib/package";
+import { buildPackage } from "nullisland-core";
 
 const pack = buildPackage({ seed: "sand-frost-ember", size: 9 });
 
@@ -235,15 +263,15 @@ pack.entries;  // each file, its options, its notes and its path inside the zip
 
 `generate()` also returns a `map` field — a sampled, bounded view of where the geometry landed, with counts of invalid and out-of-range positions. That's what the plot draws, and it's useful on its own for assertions.
 
-Layout:
+Inside the package:
 
-- `lib/base.ts` — builds a clean, well-formed dataset
-- `lib/mutate.ts` — every problem, as a transform over that dataset, applied in a fixed order
-- `lib/text.ts` — byte-level corruptions applied after serialisation
-- `lib/formats/` — one writer per format
-- `lib/problems.ts` — the catalogue, including which formats and data types can express what
-- `lib/profiles/` — the 23 data types: field lists, geometry modes, and the cross-column arithmetic that has to hold
-- `lib/domain.ts` — problems that only exist inside a data type, each told which columns it applies to
+- `base.ts` — builds a clean, well-formed dataset
+- `mutate.ts` — every problem, as a transform over that dataset, applied in a fixed order
+- `text.ts` — byte-level corruptions applied after serialisation
+- `formats/` — one writer per format
+- `problems.ts` — the catalogue, including which formats and data types can express what
+- `profiles/` — the 23 data types: field lists, geometry modes, and the cross-column arithmetic that has to hold
+- `domain.ts` — problems that only exist inside a data type, each told which columns it applies to
 - `lib/package.ts` — the format sweep, the archive, and the context written into it
 
 Adding a problem means adding a catalogue entry and one transform function. Adding a data type means adding a field list — the writers, the problems and the UI pick it up from there.
@@ -254,16 +282,18 @@ The full configuration lives in the URL hash, so every file you generate has a l
 
 ## Design
 
-Host Grotesk, a near-black `#0C0D0D`, and a single signature mint `#ECF4EE` that marks anything generated. Light only — it's a daytime tool. Tokens live in `src/app/globals.css`; there are no component libraries and no CSS beyond Tailwind utilities.
+Host Grotesk, a near-black `#0C0D0D`, and a single signature mint `#ECF4EE` that marks anything generated. Light only — it's a daytime tool. Tokens live in `apps/web/src/app/globals.css`; there are no component libraries and no CSS beyond Tailwind utilities.
 
 ## Contributing
 
-42 problems is not all of them. If a real file broke your viewer in a way this can't reproduce yet, [open an issue](https://github.com/Between-Collective/nullisland/issues/new) and describe it — the file, the viewer, and what went wrong.
+72 problems is not all of them. If a real file broke your viewer in a way this can't reproduce yet, [open an issue](https://github.com/Between-Collective/nullisland/issues/new) and describe it — the file, the viewer, and what went wrong.
 
 Pull requests welcome. A new problem is two things:
 
-1. An entry in `src/lib/problems.ts` — id, label, a one-line blurb describing what actually breaks, a category, a phase (`data` for feature-level, `text` for byte-level), and `appliesTo` if only some formats can express it.
-2. A transform in `src/lib/mutate.ts`, registered in the `ORDER` array. Geometry is reshaped before coordinates are mangled, coordinates before attributes, and whole-dataset transforms last.
+1. An entry in `packages/core/src/problems.ts` — id, label, a one-line blurb describing what actually breaks, a category, a phase (`data` for feature-level, `text` for byte-level), `appliesTo` if only some formats can express it, and `profiles` if it only exists in particular data types.
+2. A transform in `packages/core/src/mutate.ts` (or `domain.ts` for a data-type-specific one), registered in the `ORDER` array. Geometry is reshaped before coordinates are mangled, coordinates before attributes, and whole-dataset transforms last.
+
+A new data type is one field list in `packages/core/src/profiles/` — the writers, the problem grid, the CLI and the package sweep pick it up from there.
 
 Run `npm run check` before opening a PR. Anything new should keep the suite green, and problems that apply to every format get exercised against every format automatically.
 

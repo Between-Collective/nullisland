@@ -1,18 +1,22 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
 
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
-
-export default eslintConfig;
+/**
+ * Lint for the packages. The web app has its own config (Next brings rules that
+ * only make sense inside it), and this covers what used to be linted as part of
+ * it before the generator moved into a package of its own.
+ */
+export default tseslint.config(
+  { ignores: ["**/dist/**", "apps/**", "node_modules/**"] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ["packages/**/*.ts"],
+    languageOptions: {
+      globals: { console: "readonly", process: "readonly", Buffer: "readonly", crypto: "readonly", structuredClone: "readonly", require: "readonly", __dirname: "readonly", TextEncoder: "readonly", TextDecoder: "readonly", Blob: "readonly" },
+    },
+    rules: {
+      "no-empty": ["error", { allowEmptyCatch: true }],
+    },
+  },
+);

@@ -1,32 +1,32 @@
 {
-  "name": "nullisland",
+  "name": "nullisland-monorepo",
   "version": "0.1.0",
-  "private": false,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "verify": "tsx scripts/verify.ts",
-    "check": "tsc --noEmit && eslint . && npm run verify"
-  },
-  "dependencies": {
-    "next": "^16.3.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "^16.3.1",
-    "tailwindcss": "^4",
-    "tsx": "^4.23.1",
-    "typescript": "^5"
-  },
+  "private": true,
   "description": "Generate deliberately broken geospatial files to test map viewers.",
   "license": "MIT",
-  "author": "Between Collective"
+  "author": "Between Collective",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w nullisland-core && npm run dev -w nullisland-web",
+    "build": "npm run build -w nullisland-core && npm run build -w nullisland && npm run build -w nullisland-web",
+    "cli": "npm run build -w nullisland-core >/dev/null && tsx packages/cli/src/index.ts",
+    "verify": "npm run verify -w nullisland-core",
+    "check": "npm run build -w nullisland-core && npm run build -w nullisland && npm run check -w nullisland-core && npm run check -w nullisland && npm run lint && npm run smoke -w nullisland && npm run check -w nullisland-web",
+    "lint": "eslint packages",
+    "release": "npm run check && npm publish -w nullisland-core && npm publish -w nullisland"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.23.1",
+    "typescript": "^5",
+    "@eslint/js": "^9",
+    "eslint": "^9",
+    "typescript-eslint": "^8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
