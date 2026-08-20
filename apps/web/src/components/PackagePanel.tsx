@@ -34,8 +34,17 @@ function Row({ entry, index }: { entry: PackageEntry; index: number }) {
       </span>
 
       <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-muted">
-        <span className={`h-1.5 w-1.5 rounded-full ${DOT[entry.lead]}`} aria-hidden />
-        {CATEGORY_LABELS[entry.lead]}
+        {entry.lead ? (
+          <>
+            <span className={`h-1.5 w-1.5 rounded-full ${DOT[entry.lead]}`} aria-hidden />
+            {CATEGORY_LABELS[entry.lead]}
+          </>
+        ) : (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-ink" aria-hidden />
+            {file.clean && !file.clean.passed ? "check failed" : "clean"}
+          </>
+        )}
       </span>
 
       {/* The format is already legible in the extension, so the column that
@@ -46,9 +55,11 @@ function Row({ entry, index }: { entry: PackageEntry; index: number }) {
       <span className="font-mono text-[10.5px] tabular-nums text-muted">
         {file.stats.features.toLocaleString()} feat
       </span>
-      <span className="font-mono text-[10.5px] tabular-nums text-muted">
-        {file.stats.problems.length} prob
-      </span>
+      {!file.stats.clean && (
+        <span className="font-mono text-[10.5px] tabular-nums text-muted">
+          {file.stats.problems.length} prob
+        </span>
+      )}
       {boundary && (
         <span
           className="font-mono text-[10.5px] tabular-nums text-mint-ink"
@@ -81,12 +92,17 @@ export function PackagePanel({
   busy,
   size,
   onSize,
+  clean,
+  onClean,
   onBuild,
 }: {
   pkg: GeneratedPackage | null;
   busy: boolean;
   size: number;
   onSize: (next: number) => void;
+  /** Build the control package: same spread, nothing wrong with any of it. */
+  clean: boolean;
+  onClean: (next: boolean) => void;
   onBuild: () => void;
 }) {
   const [saved, setSaved] = useState(false);
@@ -123,14 +139,44 @@ export function PackagePanel({
         <div className="min-w-0">
           <CardTitle>Package</CardTitle>
           <p className="mt-1.5 max-w-xl text-[12.5px] leading-relaxed text-muted">
-            A run of files in one download — one per format, each broken differently, with a{" "}
-            <code className="font-mono text-[11.5px] text-ink">README.md</code> and{" "}
+            A run of files in one download — one per format,{" "}
+            {clean ? <>none of them broken</> : <>each broken differently</>}
+            , with a <code className="font-mono text-[11.5px] text-ink">README.md</code> and{" "}
             <code className="font-mono text-[11.5px] text-ink">manifest.json</code> describing every
             one of them. Hand the folder to an agent and it has the context without opening a file.
           </p>
+          {clean && (
+            <p className="mt-2 max-w-xl text-[12.5px] leading-relaxed text-mint-ink">
+              Every file should load, with no features lost. Anything that fails here has found a
+              bug on the reading side — run this before the broken package, not after.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div role="radiogroup" aria-label="Package contents" className="flex gap-1.5">
+            {[
+              { value: false, label: "Broken", hint: "Every file broken differently" },
+              { value: true, label: "Clean", hint: "Every file valid — the control package" },
+            ].map((option) => (
+              <button
+                key={String(option.value)}
+                type="button"
+                role="radio"
+                aria-checked={option.value === clean}
+                title={option.hint}
+                onClick={() => onClean(option.value)}
+                className={[
+                  "rounded-full border px-3 py-1.5 text-[11.5px] transition-colors",
+                  option.value === clean
+                    ? "border-ink bg-ink text-white"
+                    : "border-line-strong bg-white text-muted hover:border-dim hover:text-ink",
+                ].join(" ")}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
           <div role="radiogroup" aria-label="Package size" className="flex gap-1.5">
             {PACKAGE_SIZES.map((option) => (
               <button
@@ -154,7 +200,11 @@ export function PackagePanel({
             variant="primary"
             onClick={onBuild}
             disabled={busy}
-            title="Roll a whole package: every format, random problems, one seed"
+            title={
+              clean
+                ? "Build a whole control package: every format, nothing wrong with any of it"
+                : "Roll a whole package: every format, random problems, one seed"
+            }
           >
             <span className="emoji" aria-hidden>
               🎲

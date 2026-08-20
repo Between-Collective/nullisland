@@ -89,6 +89,26 @@ export function HeroPanel({
                 {file.stats.problems.length} problem{file.stats.problems.length === 1 ? "" : "s"}
               </span>
             )}
+            {/* A clean file says so on its face. "0 problems" would read as an
+                absence; this is the control case, which is a thing you chose. */}
+            {file?.stats.clean && (
+              <span
+                className={
+                  file.clean && !file.clean.passed
+                    ? "rounded-full bg-cat-encoding px-2 py-0.5 font-mono text-[10.5px] text-white"
+                    : "rounded-full bg-ink px-2 py-0.5 font-mono text-[10.5px] text-white"
+                }
+                title={
+                  file.clean && !file.clean.passed
+                    ? "This file failed its own clean check — that is a bug in Null Island"
+                    : file.clean
+                      ? `${file.clean.checks.length} checks run on this file, all passed`
+                      : undefined
+                }
+              >
+                {file.clean && !file.clean.passed ? "check failed" : "clean"}
+              </span>
+            )}
           </div>
 
           <p className="display-figure mt-2 text-[38px] leading-none text-ink sm:text-[44px]">

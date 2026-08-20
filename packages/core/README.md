@@ -38,7 +38,8 @@ No dependencies, no DOM: it runs in Node, in a bundler, or in a browser, and the
 - **23 data types.** Real schemas rather than themed column names: `icao24` and `baro_altitude`, `mmsi` and `nav_status`, `APN` and `LAND_VAL`, `B01003_001E`. `PROFILES` lists them; columns agree with each other before a problem breaks them.
 - **72 problems.** 42 general, 30 that only exist in a particular data type. `PROBLEMS` lists them, each with the format and data types it applies to.
 - **Boundaries with ground truth.** `boundary` emits a second file plus the counts a `contains` and an `intersects` filter should each return, measured from the finished geometry.
-- **Packages.** `buildPackage({ seed, size })` returns a ZIP of fixtures sweeping formats and data types, with a README describing every one of them.
+- **Packages.** `buildPackage({ seed, size })` returns a ZIP of fixtures sweeping formats and data types, with a README describing every one of them. `clean: true` sweeps the same spread with nothing wrong with any of it.
+- **The control case.** `problems: []` builds a valid file rather than a broken one, and inspects it before returning: `file.stats.clean`, `file.clean.passed` and `file.clean.checks` carry the measurements behind the claim.
 
 ## Useful exports
 

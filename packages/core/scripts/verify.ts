@@ -6,6 +6,7 @@ import { signedArea } from "../src/geo";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { group } from "../src/format";
+import { buildContext, contextToText } from "../src/context";
 import { buildPackage, MAX_PACKAGE_FILES } from "../src/package";
 import { PROBLEMS, appliesTo, getProblem } from "../src/problems";
 import {
@@ -393,6 +394,104 @@ for (const region of ["world", "fiji", "svalbard", "reykjavik", "london", "auckl
     const bad = file.map.outOfRange + file.map.invalid;
     ok(`clean ${region}/${shape} in range`, bad === 0, `${bad} of ${file.map.total} off-world`);
   }
+}
+
+/* ── 5b2. a clean file passes its own clean check ─────────────────────────── */
+// The claim "nothing is wrong with this file" is the one claim a fixture tool
+// cannot make on trust: a control case you believe is good, and isn't, sends
+// you hunting a bug in your reader that lives in your test data.
+console.log("\n5b2. clean output passes its own check");
+{
+  let reports = 0;
+  for (const format of FORMATS) {
+    for (const profile of PROFILES) {
+      const shape = profileShape(getProfile(profile.id)) as any;
+      const file = generate(opts({
+        format: format.id,
+        profile: profile.id,
+        shape: ["point", "line", "polygon", "mixed"].includes(shape) ? shape : "mixed",
+        problems: [],
+        count: 40,
+        seed: `clean-${format.id}-${profile.id}`,
+      }));
+      reports++;
+      ok(`${format.id.padEnd(10)} ${profile.id.padEnd(22)} is marked clean`, file.stats.clean);
+      ok(`${format.id.padEnd(10)} ${profile.id.padEnd(22)} has a report`, file.clean !== null);
+      ok(
+        `${format.id.padEnd(10)} ${profile.id.padEnd(22)} passes it`,
+        file.clean?.passed === true,
+        file.clean?.checks.filter((c) => !c.ok).map((c) => `${c.label}: ${c.detail}`).join("; "),
+      );
+    }
+  }
+  console.log(`  ${reports} format/data-type combinations checked clean`);
+
+  // The inverse: a file with problems in it must not claim to be a control
+  // case, or the flag is decoration.
+  const broken = generate(opts({ problems: ["coincident", "precision-drift"], count: 40 }));
+  ok("a file with problems is not marked clean", broken.stats.clean === false);
+  ok("a file with problems carries no clean report", broken.clean === null);
+
+  // Asking only for problems the format cannot express leaves a clean file, and
+  // it has to say so rather than let the file pass for the broken one you
+  // wanted. CSV has no crs member, no bbox and no foreign members, so all three
+  // are skipped and nothing is left to apply.
+  const skipped = generate(opts({
+    format: "csv",
+    problems: ["crs-member", "wrong-bbox", "foreign-members"],
+    count: 20,
+  }));
+  ok("a fully-skipped selection applies nothing", skipped.stats.problems.length === 0,
+    skipped.stats.problems.join(","));
+  ok("a fully-skipped selection is reported as clean", skipped.stats.clean === true);
+  ok("and is checked like any other clean file", skipped.clean?.passed === true);
+  ok(
+    "and says the file is not the broken one that was asked for",
+    skipped.notes.some((n) => n.includes("Nothing was left to apply")),
+    skipped.notes.join(" | ").slice(0, 160),
+  );
+
+  // A clean package is clean all the way through, or it is worse than useless.
+  const pack = buildPackage({ seed: "clean-pack", size: 9, clean: true });
+  ok("a clean package is flagged clean", pack.clean === true);
+  ok(
+    "every file in a clean package has no problems",
+    pack.entries.every((e) => e.file.stats.clean && e.file.stats.problems.length === 0),
+  );
+  ok(
+    "every file in a clean package passes its check",
+    pack.entries.every((e) => e.file.clean?.passed === true),
+    pack.entries.filter((e) => !e.file.clean?.passed).map((e) => e.path).join(","),
+  );
+  ok(
+    "a clean package names itself apart from a broken one",
+    pack.filename.includes("clean-pack"),
+    pack.filename,
+  );
+  ok(
+    "a clean package README does not call its files broken",
+    !pack.readme.includes("deliberately broken"),
+  );
+  // Same words, different package: the two modes must not be the same roll with
+  // the damage switched off.
+  const dirty = buildPackage({ seed: "clean-pack", size: 9 });
+  ok("a clean package is not a broken one with the problems removed",
+    dirty.entries.some((e, i) => e.options.seed !== pack.entries[i].options.seed ||
+      e.options.format !== pack.entries[i].options.format ||
+      e.options.count !== pack.entries[i].options.count) ||
+    dirty.entries.some((e) => e.file.stats.problems.length > 0));
+
+  // The written context has to change with the file, or the block that travels
+  // to an issue or an agent describes a control case as a broken fixture.
+  const cleanFile = generate(opts({ problems: [], count: 20 }));
+  const cleanText = contextToText(buildContext(cleanFile, "GeoJSON"));
+  ok("a clean file is not described as deliberately broken",
+    !cleanText.includes("deliberately broken"), cleanText.slice(0, 90));
+  ok("a clean file's context lists what was checked",
+    cleanText.includes("Checked on this file"), cleanText.slice(0, 200));
+  const brokenText = contextToText(buildContext(broken, "GeoJSON"));
+  ok("a broken file still is", brokenText.includes("deliberately broken"));
+  ok("a broken file's context has no clean checks", !brokenText.includes("Checked on this file"));
 }
 
 /* ── 5c. the map preview reflects what the problems actually did ─────────── */

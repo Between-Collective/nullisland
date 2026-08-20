@@ -9,6 +9,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { CleanReport } from "./clean";
+
 /** [lon, lat] plus optional Z/M — or whatever a problem has turned it into. */
 export type Position = any[];
 
@@ -164,10 +166,22 @@ export interface GeneratedFile extends FilePayload {
   notes: string[];
   map: MapPreview;
   boundary: BoundaryOutput | null;
+  /**
+   * Present only on a clean file: the checks that were run to establish that it
+   * really is one. Null on a file with problems in it, where the question does
+   * not arise. See lib/clean.
+   */
+  clean: CleanReport | null;
   stats: {
     features: number;
     problems: string[];
     /** The data type this file imitates. */
     profile: string;
+    /**
+     * Nothing was applied to this file — the control case. Note that this is
+     * measured from what actually ran, not from what was asked for: a problem
+     * the format cannot express leaves the file clean, and says so.
+     */
+    clean: boolean;
   };
 }

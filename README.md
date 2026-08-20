@@ -6,6 +6,8 @@ Every geo-viz tool says "bring us whatever you've got". Then a file arrives with
 
 Null Island generates those files on purpose. Pick a format, pick a data type — ADS-B tracks, AIS positions, parcels, census tracts, ad-exchange pings — pick which problems to bake in, and download a fixture. Or randomise it, or take a whole package of them at once.
 
+It generates the other kind too. Pick no problems at all and you get a **clean** file — valid, well-formed, wearing the same real schema — because "does my map load good data" is the question worth settling before any of the rest.
+
 Everything runs in the browser. Nothing is uploaded, nothing is stored, and the whole thing builds to static files. There is a command line too — same generator, same bytes:
 
 ```bash
@@ -17,7 +19,7 @@ npx nullisland --type maritime-ais --format csv --typical --count 200
 ## How to use it
 
 1. **Say what the file is.** Pick a format, and a data type for what it holds — the data type swaps generic columns for a real schema and brings the geometry that goes with it.
-2. **Say what is wrong with it.** Tick problems, or press *Typical* for what that kind of feed actually arrives with. *Chaos* sets how much of the file each problem touches.
+2. **Say what is wrong with it.** Tick problems, or press *Typical* for what that kind of feed actually arrives with. *Chaos* sets how much of the file each problem touches. Press *Clean* for the opposite — a valid file, checked before it is handed over, to prove the happy path first.
 3. **Watch it happen.** The plot redraws as you go; *Fit* against *World* tells "wrong place" from "wrong shape".
 4. **Add a boundary** if you want an answer rather than a picture: a second GeoJSON to filter by, plus the counts `contains` and `intersects` should each return.
 5. **Take the file and its context.** Download or copy the fixture; the dark panel holds a written account of everything wrong with it, for an issue or an agent.
@@ -99,6 +101,28 @@ Where several families ship the same breakage under different names, it is one p
 
 **Typical for this data type** selects what that feed actually arrives with, so you can start from a realistic bad file rather than assembling one.
 
+## The control case
+
+Before you ask whether your map survives bad data, it is worth establishing that it handles good data — and a reader that mangles a clean shapefile will fail every broken fixture too, for a reason that has nothing to do with the fixture.
+
+So **Clean** is a first-class setting rather than the absence of one. Press it (or pass `--clean`) and you get a valid file wearing a real schema: every coordinate inside the WGS84 domain, every ring closed, every feature carrying the same keys, UTF-8 with no BOM and LF throughout. Upload it to prove the happy path works, then tick a problem and watch what changes.
+
+The claim is checked rather than promised. A clean file is inspected before it is handed over, and the checks travel with it — on screen, in the copied context block, in the package README and in `--json`:
+
+```
+  ok  Every coordinate is a finite number inside the WGS84 domain (1,000 positions, none off-world)
+  ok  Every feature has a geometry and a properties object (200 features, none null or empty)
+  ok  Every polygon ring is closed, with at least four positions (200 rings, all closed)
+  ok  Every feature carries the same attribute keys (14 keys, identical across 200 features)
+  ok  UTF-8 with no byte-order mark, and LF line endings throughout (no BOM, no CR)
+```
+
+A failing check is a bug in Null Island, and it says so in those words — the CLI exits non-zero, because a control fixture that is not actually clean sends you hunting a bug in your reader that lives in your test data.
+
+Two things a clean file still does, because real clean data does them: optional attributes are sometimes empty, and a lossy container still drops what it cannot carry — GPX has no attributes, WKT has no properties at all. Both are stated in the notes rather than left for you to discover.
+
+`--package --clean` builds the same sweep of formats and data types with nothing wrong with any of it, which is the artefact to reach for when the question is "does every container we accept actually work".
+
 ## Problems
 
 42 general ones, in five categories, plus 30 that belong to particular data types.
@@ -165,6 +189,8 @@ files/             the fixtures, plus any boundary sidecars
 
 `README.md` is the AI context for the whole package rather than a single file — drop the folder into an agent's working directory and it can test against the notes without opening a fixture. Every entry ends with a link that regenerates that exact file, and the on-screen listing has an **open** link per file that loads its settings back into the generator.
 
+Switch the package to **Clean** and the sweep stays exactly the same — every container, the same spread of data types, the same boundary ground truth — with nothing wrong with any of it. That archive is named `nullisland-clean-pack-…` so it cannot be mistaken for the other one on disk, and its README says plainly that every file should load with no features lost.
+
 The whole package derives from one seed, so `nullisland-pack-9-sand-frost-ember.zip` is rebuilt byte for byte from `sand-frost-ember`, and each file inside it from `sand-frost-ember-3` and so on. Packages stay in the hundreds of features per file: breadth is the point, and breadth at 500 features finds the same bugs as breadth at 50,000.
 
 ## Handling what comes out
@@ -217,6 +243,8 @@ The split is by layer rather than by language on purpose. The promise this tool 
 ```bash
 npx nullisland --list types
 npx nullisland --type cadastral-parcels --format shapefile --typical --out fixtures
+npx nullisland --clean --type cadastral-parcels --format shapefile --out fixtures
+npx nullisland --package 9 --clean --extract --out test/fixtures/clean
 npx nullisland --package 9 --extract --out test/fixtures --seed sand-frost-ember
 npx nullisland --from-url 'https://nullisland.app/#f=geojson&d=flight-adsb&s=quartz-harbor-drift'
 npx nullisland --format geojson --count 20 --json | jq '.notes'
@@ -259,6 +287,16 @@ pack.filename; // "nullisland-pack-9-sand-frost-ember.zip"
 pack.data;     // Uint8Array — the archive
 pack.readme;   // the AI context for every file in it
 pack.entries;  // each file, its options, its notes and its path inside the zip
+```
+
+Pass `problems: []` for a control fixture, or `clean: true` for a whole control package. Either way the result carries the checks that were run on it:
+
+```ts
+const control = generate({ ...options, problems: [] });
+
+control.stats.clean;    // true — nothing was applied
+control.clean.passed;   // true — and it was checked, not assumed
+control.clean.checks;   // each check, with the measurement behind it
 ```
 
 `generate()` also returns a `map` field — a sampled, bounded view of where the geometry landed, with counts of invalid and out-of-range positions. That's what the plot draws, and it's useful on its own for assertions.

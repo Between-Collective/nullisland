@@ -15,9 +15,11 @@ import { dirname, join, resolve } from "node:path";
 import {
   appliesTo,
   appliesToProfile,
+  BOUNDARIES as BOUNDARY_META,
   buildContext,
   buildPackage,
   CATEGORY_LABELS,
+  CATEGORY_ORDER,
   contextToText,
   decodeConfig,
   DEFAULT_PROFILE,
@@ -37,6 +39,7 @@ import {
   profilesInFamily,
   normaliseSeed,
   randomSeed,
+  Rng,
   REGIONS,
   SITE_URL,
   type BoundaryId,
@@ -68,7 +71,7 @@ const TAKES_VALUE = new Set([
 ]);
 
 const IS_FLAG = new Set([
-  "help", "h", "version", "v", "typical", "stdout", "context", "json", "compact",
+  "help", "h", "version", "v", "typical", "clean", "stdout", "context", "json", "compact",
   "extract", "package", "list",
 ]);
 
@@ -152,8 +155,96 @@ function number(
 
 /* ── listing ─────────────────────────────────────────────────────────────── */
 
-function list(what: string): void {
+/**
+ * The catalogue as data rather than as columns.
+ *
+ * The prose listing is for a person deciding what to generate. This is for
+ * whatever is going to generate it: an agent or a script picking ids needs to
+ * know not just that `crs-member` exists but that CSV cannot express it and
+ * that `ais-sentinels` only exists in AIS data — facts the padded columns imply
+ * at best. Everything here comes from the same catalogue the generator reads,
+ * so a listing cannot drift from what the generator will accept.
+ */
+function listJson(what: string): boolean {
   const out = process.stdout;
+  const write = (value: unknown) => out.write(`${JSON.stringify(value, null, 2)}\n`);
+
+  if (what === "formats") {
+    write({
+      formats: FORMATS.map((f) => ({
+        id: f.id,
+        label: f.label,
+        ext: f.ext,
+        mime: f.mime,
+        binary: f.binary,
+        blurb: f.blurb,
+      })),
+    });
+    return true;
+  }
+  if (what === "types" || what === "profiles") {
+    write({
+      dataTypes: PROFILES.map((p) => ({
+        id: p.id,
+        label: p.label,
+        family: p.family,
+        // The geometry this data really comes in. Asking for another is allowed
+        // but deliberate, and the file says so when you do.
+        shape: profileShape(p),
+        blurb: p.blurb,
+        // The generic profile builds its properties outright rather than from a
+        // field list, so its columns are read off one sample rather than
+        // reported as none — an empty array would read as "no attributes".
+        columns: p.fields?.length
+          ? p.fields.map((f) => f.name)
+          : p.build
+            ? Object.keys(p.build(new Rng("list"), 0))
+            : [],
+        typicalProblems: p.apt,
+      })),
+      families: FAMILIES.map((f) => ({ id: f.id, label: f.label })),
+    });
+    return true;
+  }
+  if (what === "problems") {
+    write({
+      problems: PROBLEMS.map((p) => ({
+        id: p.id,
+        label: p.label,
+        blurb: p.blurb,
+        category: p.category,
+        // Omitted in the catalogue means "all of them"; spelled out here, so a
+        // caller never has to know that convention.
+        formats: p.appliesTo ?? FORMATS.map((f) => f.id),
+        dataTypes: p.profiles ?? "all",
+      })),
+      categories: CATEGORY_ORDER.map((id) => ({ id, label: CATEGORY_LABELS[id] })),
+    });
+    return true;
+  }
+  if (what === "regions" || what === "places") {
+    write({ regions: REGIONS.map((r) => ({ id: r.id, label: r.label, lon: r.lon, lat: r.lat })) });
+    return true;
+  }
+  if (what === "boundaries") {
+    write({ boundaries: BOUNDARY_META.map((b) => ({ id: b.id, label: b.label, blurb: b.blurb })) });
+    return true;
+  }
+  return false;
+}
+
+function list(what: string, json: boolean): void {
+  if (json) {
+    if (listJson(what)) return;
+    fail(`don't know how to list "${what}"`, "try: formats, types, problems, regions, boundaries");
+  }
+  const out = process.stdout;
+  if (what === "boundaries") {
+    for (const boundary of BOUNDARY_META) {
+      out.write(`${boundary.id.padEnd(11)} ${boundary.label.padEnd(22)} ${boundary.blurb}\n`);
+    }
+    return;
+  }
   if (what === "formats") {
     for (const format of FORMATS) {
       out.write(`${format.id.padEnd(11)} .${format.ext.padEnd(10)} ${format.blurb}\n`);
@@ -178,6 +269,7 @@ function list(what: string): void {
       for (const problem of PROBLEMS.filter((p) => p.category === category)) {
         const scope = problem.profiles ? ` [${problem.profiles.length} data types]` : "";
         out.write(`  ${problem.id.padEnd(24)} ${problem.label}${scope}\n`);
+        out.write(`  ${" ".repeat(24)} ${problem.blurb}\n`);
       }
     }
     out.write("\n");
@@ -187,13 +279,13 @@ function list(what: string): void {
     for (const region of REGIONS) out.write(`${region.id.padEnd(16)} ${region.label}\n`);
     return;
   }
-  fail(`don't know how to list "${what}"`, "try: formats, types, problems, regions");
+  fail(`don't know how to list "${what}"`, "try: formats, types, problems, regions, boundaries");
 }
 
 /* ── options ─────────────────────────────────────────────────────────────── */
 
 const SHAPES: ShapeId[] = ["point", "line", "polygon", "mixed"];
-const BOUNDARIES: BoundaryId[] = ["none", "bbox", "polygon", "hole", "multipart"];
+const BOUNDARY_ORDER: BoundaryId[] = ["none", "bbox", "polygon", "hole", "multipart"];
 
 /**
  * A share link is the whole configuration, so it is read first and then
@@ -229,6 +321,27 @@ function optionsFrom(args: Args): GenerateOptions {
     if (!getProblem(id)) fail(`unknown problem "${id}"`, `run \`${NAME} --list problems\``);
   }
 
+  // --clean is an assertion about the output, not a default, so anything that
+  // would put a problem in the file contradicts it outright. Quietly winning
+  // that argument in either direction is the failure mode worth avoiding: a
+  // file you believe is a control case and isn't teaches you the wrong thing
+  // about your reader, and so does the reverse.
+  const clean = args.flags.has("clean");
+  if (clean) {
+    if (problems.length) {
+      fail("--clean and --problems ask for opposite things",
+        "drop one: --clean for a control fixture, --problems for a broken one");
+    }
+    if (args.flags.has("typical")) {
+      fail("--clean and --typical ask for opposite things",
+        "--typical is what this data type usually arrives broken with");
+    }
+    if (fromUrl !== undefined && (shared.problems?.length ?? 0) > 0) {
+      fail("--clean contradicts that share link, which carries problems",
+        "drop --clean to rebuild the link as it was");
+    }
+  }
+
   const format = oneOf(
     "format",
     args.values.get("format"),
@@ -243,11 +356,15 @@ function optionsFrom(args: Args): GenerateOptions {
     shape: oneOf("shape", args.values.get("shape"), SHAPES, shared.shape ?? (profileId === DEFAULT_PROFILE ? "point" : profileShape(profile))),
     region: oneOf("region", args.values.get("region"), REGIONS.map((r) => r.id), shared.region ?? "london"),
     profile: profileId,
-    problems: problems.length ? problems : (shared.problems ?? (args.flags.has("typical") ? profile.apt : [])),
-    intensity: number("--intensity", args.values.get("intensity"), shared.intensity ?? 0.4, 0, 1),
+    problems: clean
+      ? []
+      : problems.length
+        ? problems
+        : (shared.problems ?? (args.flags.has("typical") ? profile.apt : [])),
+    intensity: clean ? 0 : number("--intensity", args.values.get("intensity"), shared.intensity ?? 0.4, 0, 1),
     seed: normaliseSeed(args.values.get("seed") ?? shared.seed ?? randomSeed()),
     pretty: !args.flags.has("compact") && (shared.pretty ?? true),
-    boundary: oneOf("boundary", args.values.get("boundary"), BOUNDARIES, shared.boundary ?? "none"),
+    boundary: oneOf("boundary", args.values.get("boundary"), BOUNDARY_ORDER, shared.boundary ?? "none"),
     coverage: number("--coverage", args.values.get("coverage"), shared.coverage ?? 0.6, 0, 1),
   };
 }
@@ -281,6 +398,16 @@ function generateOne(args: Args): void {
     }
     if (typeof file.data === "string") process.stdout.write(file.data);
     else process.stdout.write(Buffer.from(file.data));
+    // stdout carries the file and nothing else, but a control fixture that
+    // failed its own check still has to say so — stderr is not the pipe, and
+    // silence here would hand a broken control case straight into a test.
+    if (file.clean && !file.clean.passed) {
+      process.stderr.write(
+        `${NAME}: this file did not pass its own clean check — that is a bug in Null Island.\n` +
+          `  please report it at ${SITE_URL}\n`,
+      );
+      process.exit(1);
+    }
     return;
   }
 
@@ -307,6 +434,16 @@ function generateOne(args: Args): void {
           bbox: file.map.bbox,
           offWorld: { outOfRange: file.map.outOfRange, invalid: file.map.invalid },
           problems: file.stats.problems,
+          clean: file.stats.clean,
+          // Present only on a control fixture: what was checked, and whether it
+          // held. `passed: false` is a bug in Null Island, and worth failing a
+          // CI step over.
+          checks: file.clean
+            ? {
+                passed: file.clean.passed,
+                ran: file.clean.checks.map((c) => ({ check: c.label, ok: c.ok, detail: c.detail })),
+              }
+            : null,
           notes: file.notes,
           boundary: file.boundary
             ? {
@@ -328,14 +465,35 @@ function generateOne(args: Args): void {
   for (const path of written) out.write(`${path}\n`);
   out.write(
     `\n${getFormat(opts.format).label} · ${getProfile(opts.profile).label} · ` +
-      `${file.stats.features.toLocaleString()} features · ${formatBytes(file.bytes)}\n` +
+      `${file.stats.features.toLocaleString()} features · ${formatBytes(file.bytes)}` +
+      `${file.stats.clean ? " · clean" : ""}\n` +
       `seed ${opts.seed}\n`,
   );
+
+  // A control fixture is only worth anything if it really is one, so the checks
+  // are printed rather than assumed — and a failure is loud, because it means
+  // the fixture is lying.
+  if (file.clean) {
+    out.write("\n");
+    for (const check of file.clean.checks) {
+      out.write(`${check.ok ? "  ok  " : "FAIL  "}${check.label} (${check.detail})\n`);
+    }
+    if (!file.clean.passed) {
+      process.stderr.write(
+        `\n${NAME}: this file did not pass its own clean check — that is a bug in Null Island.\n` +
+          `  please report it at ${SITE_URL}\n`,
+      );
+    }
+  }
+
   if (file.notes.length) {
     out.write("\n");
     for (const note of file.notes) out.write(`- ${note}\n`);
   }
   out.write(`\nreproduce: ${SITE_URL}/#${encodeConfig(opts)}\n`);
+  // Exit non-zero so a control fixture that is not actually clean cannot pass
+  // unnoticed through a script that only checks the status.
+  if (file.clean && !file.clean.passed) process.exit(1);
 }
 
 function generatePackage(args: Args): void {
@@ -355,7 +513,10 @@ function generatePackage(args: Args): void {
     fail(`--package must be between 1 and ${MAX_PACKAGE_FILES}`);
   }
   const seed = args.values.get("seed") ?? randomSeed();
-  const pack = buildPackage({ seed, size });
+  // The one option that does mean something here: same sweep of formats and
+  // data types, nothing wrong with any of it.
+  const clean = args.flags.has("clean");
+  const pack = buildPackage({ seed, size, clean });
   const directory = args.values.get("out") ?? ".";
 
   // A zip is the shareable artefact; --extract is what you want in a repo, so
@@ -406,7 +567,8 @@ function generatePackage(args: Args): void {
 
   const out = process.stdout;
   out.write(
-    `\n${pack.entries.length} files · ${pack.features.toLocaleString()} features · ${formatBytes(pack.bytes)}\n` +
+    `\n${pack.clean ? "clean package · " : ""}${pack.entries.length} files · ` +
+      `${pack.features.toLocaleString()} features · ${formatBytes(pack.bytes)}\n` +
       `seed ${pack.seed}\n\n`,
   );
   for (const [i, entry] of pack.entries.entries()) {
@@ -416,6 +578,18 @@ function generatePackage(args: Args): void {
         `${entry.file.stats.features.toLocaleString().padStart(6)} features\n`,
     );
   }
+
+  const failed = pack.entries.filter((e) => e.file.clean && !e.file.clean.passed);
+  if (failed.length) {
+    process.stderr.write(
+      `\n${NAME}: ${failed.length} file(s) did not pass their own clean check — ` +
+        `that is a bug in Null Island.\n  please report it at ${SITE_URL}\n`,
+    );
+    process.exit(1);
+  }
+  if (pack.clean) {
+    out.write("\nEvery file above is a control case: all of them should load, with no features lost.\n");
+  }
 }
 
 /* ── help ────────────────────────────────────────────────────────────────── */
@@ -424,8 +598,24 @@ const HELP = `${NAME} — generate deliberately broken geospatial fixtures
 
 USAGE
   ${NAME} [options]                       one fixture
+  ${NAME} --clean [options]               one fixture with nothing wrong with it
   ${NAME} --package 9 [options]           a run of them, zipped
-  ${NAME} --list types|formats|problems|regions
+  ${NAME} --package 9 --clean             a run of clean ones, to test the happy path
+  ${NAME} --list types|formats|problems|regions|boundaries
+
+  Working inside a clone of this repo? There are two ways in, and they are not
+  the same thing:
+
+    npm run cli -- <options>     runs the CURRENT source, rebuilding core first
+    npx ${NAME} <options>     runs packages/cli/dist, whatever it last built
+
+  The workspace links the second one for you, so it works without installing
+  anything — but it is a build artefact. After editing source, it is stale until
+  \`npm run build\`, and it will not say so. Prefer the first while developing.
+  Add npm's own --silent when piping, or its banner lands on stdout in front of
+  the file:
+
+    npm run --silent cli -- --clean --format geojson --count 20 --stdout | jq .
 
 WHAT THE FILE IS
   --format <id>        ${FORMATS.map((f) => f.id).join(", ")}
@@ -437,6 +627,7 @@ WHAT THE FILE IS
 WHAT IS WRONG WITH IT
   --problems <a,b,c>   problem ids (--list problems)
   --typical            what this data type usually arrives with
+  --clean              nothing wrong with it: a control fixture, checked before it is written
   --intensity <0-1>    how much of the file each problem touches (default 0.4)
   --boundary <id>      none, bbox, polygon, hole, multipart — writes a second file plus ground truth
   --coverage <0-1>     share of features aimed inside the boundary
@@ -453,12 +644,29 @@ OUTPUT
   --compact            no pretty-printing for JSON formats
   --extract            for --package: write the files out rather than zipping them
 
+DRIVING THIS FROM A SCRIPT OR AN AGENT
+  --list <thing> --json    the catalogue as data: every id, plus the formats and
+                           data types each problem applies to, so a selection can
+                           be made without guessing at what will be skipped
+  --json                   the summary as data: counts, bounds, off-world tallies,
+                           the notes, the boundary's expected filter results, and
+                           for a clean file every check that was run on it
+
+  Exit codes: 0 success · 1 a clean file failed its own check, which is a bug in
+  ${NAME} rather than in your settings · 2 a usage error, printed on stderr.
+  An unknown option, data type or problem id is always an error and never a
+  silent default — a run that quietly ignored a typo would hand back a file you
+  would go on to believe things about.
+
 EXAMPLES
   ${NAME} --type maritime-ais --format csv --typical --seed harbor-lantern-drift
   ${NAME} --type cadastral-parcels --format shapefile --problems sliver-gaps,unit-mixture --out fixtures
+  ${NAME} --clean --type cadastral-parcels --format shapefile --count 500 --out fixtures
+  ${NAME} --package 9 --clean --extract --out test/fixtures/clean
   ${NAME} --package 9 --extract --out test/fixtures --seed sand-frost-ember
   ${NAME} --from-url 'https://nullisland.app/#f=geojson&d=flight-adsb&s=quartz-harbor-drift'
   ${NAME} --format geojson --count 20 --stdout | jq '.features | length'
+  ${NAME} --list problems --json | jq '[.problems[] | select(.formats | index("csv")) | .id]'
 
 Every fixture is reproducible from its seed, and nothing is uploaded anywhere.
 ${SITE_URL}
@@ -490,8 +698,10 @@ function main(): void {
 
   if (args.values.has("list") || args.flags.has("list")) {
     const listing = args.values.get("list") ?? args.positional[0];
-    if (!listing) fail("--list needs something to list", "try: formats, types, problems, regions");
-    list(listing);
+    if (!listing) {
+      fail("--list needs something to list", "try: formats, types, problems, regions, boundaries");
+    }
+    list(listing, args.flags.has("json"));
     return;
   }
 

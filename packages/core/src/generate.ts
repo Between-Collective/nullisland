@@ -11,6 +11,7 @@ import {
   type Boundary,
 } from "./boundary";
 import { utf8 } from "./bytes";
+import { inspectClean } from "./clean";
 import { excelRoundtrip, unquotedCommas } from "./domain";
 import { forEachPosition } from "./geo";
 import { getRegion } from "./regions";
@@ -328,6 +329,18 @@ export function generate(options: GenerateOptions): GeneratedFile {
     );
   }
 
+  const clean = usable.length === 0;
+
+  // Asking for problems and getting none is the one way to be handed a clean
+  // file while believing you hold a broken one — every id was skipped, each
+  // skip was reported separately, and nothing said what that added up to.
+  if (clean && opts.problems.length > 0) {
+    ds.notes.push(
+      "Nothing was left to apply, so this file is clean: a valid control case " +
+        "rather than the broken fixture that was asked for.",
+    );
+  }
+
   const filename = `${base}.${format.ext}`;
 
   let data: string | Uint8Array;
@@ -370,6 +383,22 @@ export function generate(options: GenerateOptions): GeneratedFile {
 
   const bytes = typeof data === "string" ? utf8(data).length : data.length;
 
+  // Only for the control case, and only once the bytes exist: the encoding
+  // checks read the file that is actually being handed over, not the dataset it
+  // was written from.
+  const report = clean ? inspectClean(ds, typeof data === "string" ? data : null) : null;
+  if (report && !report.passed) {
+    ds.notes.push(
+      "This file was generated with no problems selected, but it did not pass " +
+        "its own clean check: " +
+        report.checks
+          .filter((c) => !c.ok)
+          .map((c) => `${c.label.toLowerCase()} (${c.detail})`)
+          .join("; ") +
+        ". That is a bug in Null Island, not in your settings — please report it.",
+    );
+  }
+
   return {
     filename,
     mime: format.mime,
@@ -380,6 +409,7 @@ export function generate(options: GenerateOptions): GeneratedFile {
     notes: ds.notes,
     map,
     boundary: boundaryOutput,
-    stats: { features: ds.features.length, problems: usable, profile: opts.profile },
+    clean: report,
+    stats: { features: ds.features.length, problems: usable, profile: opts.profile, clean },
   };
 }

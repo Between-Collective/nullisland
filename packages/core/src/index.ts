@@ -63,6 +63,8 @@ export type { Region } from "./regions";
 /* ── describing the result ───────────────────────────────────────────────── */
 export { buildContext, contextToText } from "./context";
 export type { ContextBlock } from "./context";
+export { inspectClean } from "./clean";
+export type { CleanCheck, CleanReport } from "./clean";
 export { formatBytes } from "./format";
 
 /* ── reproducing it ──────────────────────────────────────────────────────── */

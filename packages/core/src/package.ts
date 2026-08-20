@@ -87,6 +87,17 @@ export interface PackageOptions {
   seed: string;
   /** How many fixtures to build. Formats are swept in order, then cycled. */
   size: number;
+  /**
+   * Build the control package instead: the same spread of formats and data
+   * types, with nothing wrong with any of it.
+   *
+   * A broken package asks whether your map survives bad data. This asks the
+   * question underneath it — whether it handles *good* data across every
+   * container you claim to accept — and that one is worth asking first,
+   * because a reader that mangles a clean shapefile will fail every broken
+   * fixture too, for a reason that has nothing to do with the fixture.
+   */
+  clean?: boolean;
 }
 
 export interface PackageEntry {
@@ -97,8 +108,11 @@ export interface PackageEntry {
   /** Where the fixture sits inside the archive. */
   path: string;
   boundaryPath: string | null;
-  /** The category this file was built to exercise, before the extra noise. */
-  lead: ProblemCategory;
+  /**
+   * The category this file was built to exercise, before the extra noise.
+   * Null in a clean package, which exercises no category at all.
+   */
+  lead: ProblemCategory | null;
   /** Hash that reloads these exact settings in the app. */
   hash: string;
   url: string;
@@ -106,6 +120,8 @@ export interface PackageEntry {
 
 export interface GeneratedPackage extends FilePayload {
   seed: string;
+  /** True when every file in it is a control case. */
+  clean: boolean;
   entries: PackageEntry[];
   /** The AI context for every file, as it is written into the archive. */
   readme: string;
@@ -117,40 +133,51 @@ export interface GeneratedPackage extends FilePayload {
  * One file's settings. The lead category rotates, so a package of five has
  * already touched coordinates, geometry, attributes, structure and encoding
  * before anything repeats — the rest of each selection is noise on top.
+ *
+ * In clean mode the formats and data types still sweep exactly as they do for a
+ * broken package: the spread is the point of a package either way, and a
+ * control set that only covered GeoJSON would prove nothing about the shapefile
+ * reader that is going to be the one that breaks.
  */
 function planFile(
   rng: Rng,
   seed: string,
   index: number,
   offset: number,
-): { options: GenerateOptions; lead: ProblemCategory } {
+  clean: boolean,
+): { options: GenerateOptions; lead: ProblemCategory | null } {
   const format = SWEEP[index % SWEEP.length];
-  const lead = CATEGORY_ORDER[index % CATEGORY_ORDER.length];
+  const lead = clean ? null : CATEGORY_ORDER[index % CATEGORY_ORDER.length];
   // Data types cycle on a seeded offset, striding by a family's worth each
   // time: consecutive files then come from different corners of the taxonomy
   // rather than walking the catalogue in order. The catalogue length is prime,
   // so the stride still visits every one of them before repeating.
   const profile = DATA_TYPES[(offset + index * FAMILY_STRIDE) % DATA_TYPES.length];
 
-  const pool = PROBLEMS.filter(
-    (p) => appliesTo(p, format) && appliesToProfile(p, profile.id) && p.id !== EXCLUSIVE_PROBLEM,
-  );
+  // A clean package draws nothing here — not an empty selection from a full
+  // pool, but no draw at all, so the RNG is never spent on choices that are not
+  // going to be made.
   const chosen = new Set<string>();
-  const leadPool = pool.filter((p) => p.category === lead);
-  // Not every format can express every category — WKT has no attributes to
-  // break — so a missing lead is a fact about the format, not a failure.
-  if (leadPool.length) chosen.add(rng.pick(leadPool).id);
-  // One thing this data type is actually known for, so the file reads as a bad
-  // export of its kind rather than a random one wearing its column names.
-  const aptPool = pool.filter((p) => profile.apt.includes(p.id));
-  if (aptPool.length) chosen.add(rng.pick(aptPool).id);
-  // And one problem that exists *only* in this data type. Left to the random
-  // fill it rarely appears — there are forty-two general problems against a
-  // dozen domain ones — and a package of nine schemas that break in nine
-  // generic ways would waste the schemas.
-  const domainPool = pool.filter((p) => p.profiles);
-  if (domainPool.length) chosen.add(rng.pick(domainPool).id);
-  for (const problem of rng.sample(pool, rng.int(2, 6))) chosen.add(problem.id);
+  if (!clean) {
+    const pool = PROBLEMS.filter(
+      (p) => appliesTo(p, format) && appliesToProfile(p, profile.id) && p.id !== EXCLUSIVE_PROBLEM,
+    );
+    // Not every format can express every category — WKT has no attributes to
+    // break — so a missing lead is a fact about the format, not a failure.
+    const leadPool = pool.filter((p) => p.category === lead);
+    if (leadPool.length) chosen.add(rng.pick(leadPool).id);
+    // One thing this data type is actually known for, so the file reads as a bad
+    // export of its kind rather than a random one wearing its column names.
+    const aptPool = pool.filter((p) => profile.apt.includes(p.id));
+    if (aptPool.length) chosen.add(rng.pick(aptPool).id);
+    // And one problem that exists *only* in this data type. Left to the random
+    // fill it rarely appears — there are forty-two general problems against a
+    // dozen domain ones — and a package of nine schemas that break in nine
+    // generic ways would waste the schemas.
+    const domainPool = pool.filter((p) => p.profiles);
+    if (domainPool.length) chosen.add(rng.pick(domainPool).id);
+    for (const problem of rng.sample(pool, rng.int(2, 6))) chosen.add(problem.id);
+  }
 
   const region = rng.bool(0.12) ? "world" : rng.pick(PLACES).id;
 
@@ -164,7 +191,7 @@ function planFile(
       region,
       profile: profile.id,
       problems: [...chosen],
-      intensity: 0.2 + rng.next() * 0.6,
+      intensity: clean ? 0 : 0.2 + rng.next() * 0.6,
       // Derived from the package seed, so one file out of a package is still
       // reproducible on its own from the seed printed beside it.
       seed: `${seed}-${index + 1}`,
@@ -187,30 +214,60 @@ function boundaryLine(entry: PackageEntry): string | null {
   );
 }
 
-function writeReadme(seed: string, entries: PackageEntry[]): string {
+function writeReadme(seed: string, entries: PackageEntry[], clean: boolean): string {
   const features = entries.reduce((sum, e) => sum + e.file.stats.features, 0);
   const bytes = entries.reduce((sum, e) => sum + e.file.bytes, 0);
+  const failed = entries.filter((e) => e.file.clean && !e.file.clean.passed).length;
 
   const lines: string[] = [
-    "# Null Island fixture package",
+    clean ? "# Null Island clean fixture package" : "# Null Island fixture package",
     "",
     `Seed \`${seed}\` · ${entries.length} files · ${group(features)} features · ${formatBytes(bytes)}`,
     "",
-    `Every file in \`files/\` is a deliberately broken geospatial fixture, generated by Null Island (${SITE_URL}).`,
-    "None of it is real data. Nothing was uploaded anywhere — the whole package was built in the browser",
-    "from the seed above, and that seed rebuilds it byte for byte.",
-    "",
-    "## How to use this",
-    "",
-    "Load each file the way a user would, and compare what your map does against the entry for it below.",
-    "Each entry lists what the file contains, what is wrong with it, and what a correct reader is expected",
-    "to do. Where a format could not express a requested problem, the entry says so rather than pretending.",
+    ...(clean
+      ? [
+          `Every file in \`files/\` is a clean, well-formed geospatial fixture, generated by Null Island (${SITE_URL}).`,
+          "Nothing is wrong with any of them. This is the control package: the one you run first, to establish",
+          "that your reader handles good data in every container you claim to accept, before you go looking at",
+          "how it handles bad data.",
+          "",
+          "None of it is real data. Nothing was uploaded anywhere — the whole package was built in the browser",
+          "from the seed above, and that seed rebuilds it byte for byte.",
+          "",
+          "## How to use this",
+          "",
+          "Load every file the way a user would. **All of them should load, and every feature should appear.**",
+          "There is no trick in here and nothing to catch you out, so any file that fails, drops features, or",
+          "lands in the wrong place has found a bug on the reading side — not in the fixture.",
+          "",
+          "Each entry below lists what the file holds and the checks that were run on it before it was written.",
+          "Where a container genuinely cannot carry something — GPX has no attributes, WKT has no properties at",
+          "all — the entry says what was dropped and why. That is the format's limit, not a defect in the file.",
+        ]
+      : [
+          `Every file in \`files/\` is a deliberately broken geospatial fixture, generated by Null Island (${SITE_URL}).`,
+          "None of it is real data. Nothing was uploaded anywhere — the whole package was built in the browser",
+          "from the seed above, and that seed rebuilds it byte for byte.",
+          "",
+          "## How to use this",
+          "",
+          "Load each file the way a user would, and compare what your map does against the entry for it below.",
+          "Each entry lists what the file contains, what is wrong with it, and what a correct reader is expected",
+          "to do. Where a format could not express a requested problem, the entry says so rather than pretending.",
+        ]),
     "",
     "Where a file has a boundary sidecar, its counts are ground truth rather than an observation: a",
     "`contains` filter that returns a different number is wrong, not merely different.",
     "",
     "When something breaks, the reproduction is the file's own seed plus the link at the end of its entry.",
     "",
+    ...(failed
+      ? [
+          `WARNING: ${group(failed)} of these files did not pass their own clean check. That is a bug in`,
+          `Null Island rather than in your reader — please report it at ${SITE_URL}.`,
+          "",
+        ]
+      : []),
     "## Contents",
     "",
   ];
@@ -219,8 +276,8 @@ function writeReadme(seed: string, entries: PackageEntry[]): string {
     const format = getFormat(entry.options.format).label;
     lines.push(
       `${i + 1}. \`${entry.path}\` — ${entry.profileLabel} as ${format}, ` +
-        `${group(entry.file.stats.features)} features, ` +
-        `leaning on ${CATEGORY_LABELS[entry.lead].toLowerCase()}`,
+        `${group(entry.file.stats.features)} features` +
+        (entry.lead ? `, leaning on ${CATEGORY_LABELS[entry.lead].toLowerCase()}` : ", clean"),
     );
   });
 
@@ -238,6 +295,11 @@ function writeReadme(seed: string, entries: PackageEntry[]): string {
     const boundary = boundaryLine(entry);
     if (boundary) lines.push("", `Boundary: ${boundary}.`);
 
+    if (block.checks) {
+      lines.push("", block.checks.heading);
+      for (const check of block.checks.lines) lines.push(`- ${check}`);
+    }
+
     lines.push("", block.heading);
     for (const problem of block.problems) lines.push(`- ${problem}`);
     lines.push("", `Reproduce: ${entry.url}`);
@@ -247,12 +309,13 @@ function writeReadme(seed: string, entries: PackageEntry[]): string {
   return lines.join("\n");
 }
 
-function writeManifest(seed: string, entries: PackageEntry[]): string {
+function writeManifest(seed: string, entries: PackageEntry[], clean: boolean): string {
   return JSON.stringify(
     {
       generator: "Null Island",
       url: SITE_URL,
       seed,
+      clean,
       files: entries.map((entry) => {
         const { file } = entry;
         return {
@@ -265,6 +328,14 @@ function writeManifest(seed: string, entries: PackageEntry[]): string {
           bbox: file.map.bbox,
           offWorld: { outOfRange: file.map.outOfRange, invalid: file.map.invalid },
           lead: entry.lead,
+          clean: file.stats.clean,
+          // Present only on a clean file: what was checked, and whether it held.
+          checks: file.clean
+            ? {
+                passed: file.clean.passed,
+                ran: file.clean.checks.map((c) => ({ check: c.label, ok: c.ok, detail: c.detail })),
+              }
+            : null,
           problems: file.stats.problems,
           notes: file.notes,
           boundary: file.boundary
@@ -297,9 +368,12 @@ function toBytes(data: string | Uint8Array): Uint8Array {
 export function buildPackage(options: PackageOptions): GeneratedPackage {
   const seed = normaliseSeed(options.seed);
   const size = Math.max(1, Math.min(MAX_PACKAGE_FILES, Math.floor(options.size)));
+  const clean = options.clean === true;
   // Namespaced so a package seed and a single-file seed of the same words are
-  // not quietly the same roll.
-  const rng = new Rng(`package:${seed}`);
+  // not quietly the same roll — and the two modes are namespaced apart from
+  // each other too, so a clean package and a broken one from the same words are
+  // not the same files with the damage switched off.
+  const rng = new Rng(clean ? `clean-package:${seed}` : `package:${seed}`);
   // Where the data-type cycle starts. Drawn once, so the types inside a package
   // are spread rather than repeated, and two seeds start in different places.
   const offset = rng.int(0, DATA_TYPES.length - 1);
@@ -308,7 +382,7 @@ export function buildPackage(options: PackageOptions): GeneratedPackage {
   const archive: ZipEntry[] = [];
 
   for (let i = 0; i < size; i++) {
-    const { options: opts, lead } = planFile(rng, seed, i, offset);
+    const { options: opts, lead } = planFile(rng, seed, i, offset, clean);
     const file = generate(opts);
     const path = `files/${file.filename}`;
     archive.push({ name: path, data: toBytes(file.data) });
@@ -332,8 +406,8 @@ export function buildPackage(options: PackageOptions): GeneratedPackage {
     });
   }
 
-  const readme = writeReadme(seed, entries);
-  const manifest = writeManifest(seed, entries);
+  const readme = writeReadme(seed, entries, clean);
+  const manifest = writeManifest(seed, entries, clean);
   // First in the archive, so the context is the first thing an unzip lists.
   archive.unshift(
     { name: "README.md", data: utf8(readme) },
@@ -343,11 +417,16 @@ export function buildPackage(options: PackageOptions): GeneratedPackage {
   const data = makeZip(archive);
 
   return {
-    filename: `nullisland-pack-${entries.length}-${seed}.zip`,
+    // Named apart, so a clean package and a broken one do not sit in a
+    // downloads folder looking like the same thing.
+    filename: clean
+      ? `nullisland-clean-pack-${entries.length}-${seed}.zip`
+      : `nullisland-pack-${entries.length}-${seed}.zip`,
     mime: "application/zip",
     data,
     bytes: data.length,
     seed,
+    clean,
     entries,
     readme,
     manifest,

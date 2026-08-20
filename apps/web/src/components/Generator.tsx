@@ -109,6 +109,7 @@ export function Generator() {
   const [flash, setFlash] = useState<Flash | null>(null);
   const [pkg, setPkg] = useState<GeneratedPackage | null>(null);
   const [packageSize, setPackageSize] = useState(9);
+  const [packageClean, setPackageClean] = useState(false);
   const [packageBusy, setPackageBusy] = useState(false);
   // Set only from a URL, and cleared by the user's first deliberate action.
   const [heldBack, setHeldBack] = useState(0);
@@ -249,7 +250,7 @@ export function Generator() {
     setPackageBusy(true);
     setTimeout(() => {
       try {
-        setPkg(buildPackage({ seed: randomSeed(), size: packageSize }));
+        setPkg(buildPackage({ seed: randomSeed(), size: packageSize, clean: packageClean }));
       } catch (cause) {
         setFlash({
           action: "package",
@@ -412,6 +413,8 @@ export function Generator() {
             busy={packageBusy}
             size={packageSize}
             onSize={setPackageSize}
+            clean={packageClean}
+            onClean={setPackageClean}
             onBuild={buildPack}
           />
         </div>

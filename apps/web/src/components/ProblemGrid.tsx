@@ -98,6 +98,16 @@ export function ProblemGrid({
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
+          {/* First, and a real choice rather than a way to undo the others: a
+              file with nothing wrong with it is the control case, and the thing
+              to reach for before asking how a reader handles bad data. */}
+          <Button
+            onClick={onClear}
+            active={selected.length === 0}
+            title="A valid file with nothing wrong with it — the control case"
+          >
+            Clean
+          </Button>
           {dataType.apt.length > 0 && (
             <Button
               onClick={onPickTypical}
@@ -121,11 +131,16 @@ export function ProblemGrid({
           >
             All
           </Button>
-          <Button variant="quiet" onClick={onClear}>
-            None
-          </Button>
         </div>
       </div>
+
+      {selected.length === 0 && (
+        <p className="mb-4 rounded-xl border border-mint-deep bg-mint px-3.5 py-2.5 text-[12px] leading-relaxed text-mint-ink">
+          <span className="font-semibold text-ink">Nothing selected, so the file is clean.</span>{" "}
+          A valid {formatLabel} carrying a real {dataType.label} schema, checked before it is handed
+          over — upload it to prove the happy path works, then tick a problem to see what breaks.
+        </p>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-1.5">
         <FilterPill

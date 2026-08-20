@@ -8,7 +8,14 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildPackage, encodeConfig, generate, type GenerateOptions } from "nullisland-core";
+import {
+  buildPackage,
+  encodeConfig,
+  generate,
+  PROBLEMS,
+  PROFILES,
+  type GenerateOptions,
+} from "nullisland-core";
 
 let failures = 0;
 let checks = 0;
@@ -178,10 +185,120 @@ try {
     ok("--json carries the notes", Array.isArray(parsed?.notes));
     ok("--json links back to the app", String(parsed?.url).includes("#f="));
 
+    // No --problems and no --typical, so this run is a control fixture — and
+    // the written context has to say so. It used to call every file
+    // "deliberately broken" regardless, which is the one thing a fixture tool
+    // must not get wrong about its own output.
     const context = run(["--count", "12", "--seed", config.seed, "--context", "--out", work]);
     ok("--context exits cleanly", context.status === 0);
     const md = readFileSync(join(work, `${expected.filename}.md`), "utf8");
-    ok("--context describes the file", md.includes("deliberately broken") && md.includes(expected.filename));
+    ok("--context names the file", md.includes(expected.filename));
+    ok("--context does not call a clean file broken", !md.includes("deliberately broken"), md.slice(0, 120));
+    ok("--context lists what was checked", md.includes("Checked on this file"), md.slice(0, 240));
+
+    const brokenConfig = opts({ count: 12, problems: ["coincident", "precision-drift"] });
+    const brokenFile = generate(brokenConfig);
+    const brokenRun = run([
+      "--count", "12", "--seed", brokenConfig.seed,
+      "--problems", "coincident,precision-drift", "--context", "--out", work,
+    ]);
+    ok("--context exits cleanly for a broken file", brokenRun.status === 0);
+    const brokenMd = readFileSync(join(work, `${brokenFile.filename}.md`), "utf8");
+    ok("--context still calls a broken file broken", brokenMd.includes("deliberately broken"),
+      brokenMd.slice(0, 120));
+  }
+
+  /* ── the catalogue, as data ──────────────────────────────────────────── */
+  // A script or an agent picking ids has to be able to enumerate them without
+  // parsing padded columns, and has to be able to tell in advance what a given
+  // format or data type will silently skip.
+  {
+    for (const [thing, key] of [
+      ["formats", "formats"],
+      ["types", "dataTypes"],
+      ["problems", "problems"],
+      ["regions", "regions"],
+      ["boundaries", "boundaries"],
+    ] as const) {
+      const result = run(["--list", thing, "--json"]);
+      let parsed: any = null;
+      try { parsed = JSON.parse(result.stdout); } catch {}
+      ok(`--list ${thing} --json is machine-readable`, !!parsed, result.stdout.slice(0, 100));
+      ok(`--list ${thing} --json has entries`, Array.isArray(parsed?.[key]) && parsed[key].length > 0);
+      ok(`--list ${thing} --json gives every entry an id`,
+        parsed?.[key]?.every((e: any) => typeof e.id === "string" && e.id.length > 0));
+    }
+
+    const problems = JSON.parse(run(["--list", "problems", "--json"]).stdout);
+    // The listing has to agree with the generator, or a selection made from it
+    // is a selection made from fiction.
+    ok("--list problems --json matches the catalogue", problems.problems.length === PROBLEMS.length,
+      `${problems.problems.length} vs ${PROBLEMS.length}`);
+    const crs = problems.problems.find((p: any) => p.id === "crs-member");
+    ok("--list problems --json spells out the formats a problem applies to",
+      Array.isArray(crs?.formats) && !crs.formats.includes("csv") && crs.formats.includes("geojson"),
+      JSON.stringify(crs?.formats));
+    const ais = problems.problems.find((p: any) => p.id === "ais-sentinels");
+    ok("--list problems --json names the data types a domain problem belongs to",
+      Array.isArray(ais?.dataTypes) && ais.dataTypes.includes("maritime-ais"),
+      JSON.stringify(ais?.dataTypes));
+    const general = problems.problems.find((p: any) => p.id === "coincident");
+    ok("--list problems --json says 'all' rather than omitting the field",
+      general?.dataTypes === "all", JSON.stringify(general?.dataTypes));
+
+    const types = JSON.parse(run(["--list", "types", "--json"]).stdout);
+    ok("--list types --json matches the catalogue", types.dataTypes.length === PROFILES.length,
+      `${types.dataTypes.length} vs ${PROFILES.length}`);
+    ok("--list types --json carries the columns each data type ships",
+      types.dataTypes.every((t: any) => Array.isArray(t.columns) && t.columns.length > 0),
+      types.dataTypes.filter((t: any) => !t.columns?.length).map((t: any) => t.id).join(","));
+    ok("--list types --json carries the geometry each data type comes in",
+      types.dataTypes.every((t: any) => ["point", "line", "polygon", "mixed"].includes(t.shape)));
+
+    // Every id it hands out has to be one the generator will actually take.
+    const formats = JSON.parse(run(["--list", "formats", "--json"]).stdout);
+    const oneOfEach = run([
+      "--format", formats.formats[0].id,
+      "--type", types.dataTypes[1].id,
+      "--problems", problems.problems[0].id,
+      "--count", "5", "--out", work,
+    ]);
+    ok("ids from --list --json are accepted by the generator", oneOfEach.status === 0,
+      oneOfEach.stdout.slice(0, 160));
+
+    ok("--list rejects something it cannot list", run(["--list", "nonsense", "--json"]).status === 2);
+  }
+
+  /* ── --clean is an assertion, and it holds ───────────────────────────── */
+  {
+    const clean = run(["--clean", "--type", "cadastral-parcels", "--count", "40",
+      "--seed", "control-smoke", "--json", "--out", work]);
+    let parsed: any = null;
+    try { parsed = JSON.parse(clean.stdout); } catch {}
+    ok("--clean exits cleanly", clean.status === 0, clean.stdout.slice(0, 160));
+    ok("--clean reports no problems", Array.isArray(parsed?.problems) && parsed.problems.length === 0,
+      JSON.stringify(parsed?.problems));
+    ok("--clean flags the file as clean", parsed?.clean === true);
+    ok("--clean passed every check", parsed?.checks?.passed === true,
+      JSON.stringify(parsed?.checks?.ran?.filter((c: any) => !c.ok)));
+    ok("--clean ran more than one check", (parsed?.checks?.ran?.length ?? 0) >= 4);
+
+    // The flag is an assertion about the output, so anything that contradicts
+    // it has to be refused rather than silently resolved either way.
+    const withProblems = run(["--clean", "--problems", "coincident", "--out", work]);
+    ok("--clean refuses --problems", withProblems.status === 2, String(withProblems.status));
+    const withTypical = run(["--clean", "--typical", "--type", "maritime-ais", "--out", work]);
+    ok("--clean refuses --typical", withTypical.status === 2, String(withTypical.status));
+
+    const pack = run(["--package", "5", "--clean", "--seed", "control-smoke", "--json", "--out", work]);
+    let packed: any = null;
+    try { packed = JSON.parse(pack.stdout); } catch {}
+    ok("--package --clean exits cleanly", pack.status === 0, pack.stdout.slice(0, 160));
+    ok("--package --clean builds every file clean",
+      Array.isArray(packed?.entries) && packed.entries.every((e: any) => e.problems.length === 0),
+      JSON.stringify(packed?.entries?.map((e: any) => e.problems)));
+    ok("--package --clean names the archive apart", String(packed?.file).includes("clean-pack"),
+      String(packed?.file));
   }
 
   /* ── packages ────────────────────────────────────────────────────────── */

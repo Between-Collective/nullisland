@@ -42,7 +42,9 @@ export function OutputPanel({
               Working with AI? Paste this context:
             </h2>
             <p className="mt-0.5 text-[11px] text-white/45">
-              Everything wrong with this file, in one block.
+              {file?.stats.clean
+                ? "What this file is, and what was checked, in one block."
+                : "Everything wrong with this file, in one block."}
             </p>
           </div>
           <Button
@@ -68,6 +70,21 @@ export function OutputPanel({
                   </div>
                 ))}
               </dl>
+              {block.checks && (
+                <>
+                  <p className="mt-3 text-mint">{block.checks.heading}</p>
+                  <ul>
+                    {block.checks.lines.map((line, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="shrink-0 text-mint/45" aria-hidden>
+                          -
+                        </span>
+                        <span className="text-white/80">{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               <p className="mt-3 text-mint">{block.heading}</p>
               <ul>
                 {block.problems.map((problem, i) => (
