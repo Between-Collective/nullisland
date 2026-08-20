@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CommandLine } from "./CommandLine";
 import { Contribute } from "./Contribute";
 import { HeroPanel } from "./HeroPanel";
 import { HowToUse } from "./HowToUse";
@@ -445,6 +446,8 @@ export function Generator() {
         </div>
 
         <HowToUse />
+
+        <CommandLine />
 
         <Contribute />
       </main>

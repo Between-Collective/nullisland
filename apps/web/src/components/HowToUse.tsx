@@ -32,7 +32,20 @@ const STEPS: Step[] = [
     ),
   },
   {
-    title: "2. Say what is wrong with it",
+    title: "2. Prove the happy path first",
+    body: (
+      <>
+        Press <strong>Clean</strong> and nothing is wrong with the file: a valid export wearing a
+        real schema. That is the control case, and it is worth settling before anything else —
+        a reader that mangles a clean shapefile will fail every broken fixture too, for a reason
+        that has nothing to do with the fixture. Every clean file is checked before you get it, and
+        the panel lists what was measured: coordinates inside the WGS84 domain, rings closed, one
+        schema throughout, no BOM. If this one does not load, the bug is on the reading side.
+      </>
+    ),
+  },
+  {
+    title: "3. Say what is wrong with it",
     body: (
       <>
         Tick problems in the grid below, or press <strong>Typical</strong> to load what that kind of
@@ -44,7 +57,7 @@ const STEPS: Step[] = [
     ),
   },
   {
-    title: "3. Watch it happen",
+    title: "4. Watch it happen",
     body: (
       <>
         The plot redraws as you go, so a problem is something you see rather than something you read
@@ -56,7 +69,7 @@ const STEPS: Step[] = [
     ),
   },
   {
-    title: "4. Add a boundary to get an answer, not a picture",
+    title: "5. Add a boundary to get an answer, not a picture",
     body: (
       <>
         Turn on a <strong>boundary</strong> and you get a second GeoJSON — the area you would upload
@@ -68,18 +81,18 @@ const STEPS: Step[] = [
     ),
   },
   {
-    title: "5. Take the file, and the context",
+    title: "6. Take the file, and the context",
     body: (
       <>
         <strong>Download</strong> or <strong>Copy</strong> the fixture. The dark panel holds a
-        written account of everything wrong with it, including what the format silently dropped —
-        paste that into an agent or an issue so whoever reads the file knows what it is meant to
-        contain.
+        written account of what it is — everything wrong with it and what the format silently
+        dropped, or, for a clean file, the checks it passed. Paste that into an agent or an issue so
+        whoever reads the file knows what it is meant to contain.
       </>
     ),
   },
   {
-    title: "6. Make it reproducible",
+    title: "7. Make it reproducible",
     body: (
       <>
         Every file comes from its <strong>seed</strong>: the same seed and settings always produce
@@ -90,14 +103,16 @@ const STEPS: Step[] = [
     ),
   },
   {
-    title: "7. Or take a package",
+    title: "8. Or take a package",
     body: (
       <>
         A <strong>package</strong> is 5, 9 or 18 fixtures in one zip — every format, a spread of data
         types, each broken differently — with a <code>README.md</code> describing all of them and a{" "}
         <code>manifest.json</code> beside it. Drop the folder into an agent&rsquo;s working directory
         and it can test against the notes without opening a file. One seed rebuilds the whole
-        package; every entry links back to the settings for its own file.
+        package; every entry links back to the settings for its own file. Switch it to{" "}
+        <strong>Clean</strong> for the same sweep with nothing wrong with any of it — the set to run
+        before the broken one, where every file should load and no feature should go missing.
       </>
     ),
   },
