@@ -1,3 +1,4 @@
+import { PROFILES } from "../profiles/index";
 import { normaliseSeed, Rng } from "../rng";
 import {
   aliasOfKind,
@@ -11,15 +12,19 @@ import {
   type PlaceKind,
 } from "./places";
 import {
+  ANY_SUBJECT,
   FILLERS,
   getSubject,
+  joinNouns,
   INTENTS,
   OTHER_LANGUAGES,
   POLITE,
   POSTAMBLE,
   PREAMBLE,
   render,
+  renderAny,
   renderKeywords,
+  SUBJECTS,
   subjectPhrase,
   wantsTime,
   type Intent,
@@ -96,11 +101,33 @@ export interface PlaceExpectation {
   note?: string;
 }
 
+/** One entity type the query asks for. */
+export interface SubjectExpectation {
+  /** Exactly as it appears in the query text — "planes", not "aircraft". */
+  typed: string;
+  /** The schema's own word for it. */
+  canonical: string;
+  /** The data type it belongs to. */
+  dataType: string;
+}
+
 export interface TermExpectation {
   intent: Intent;
-  /** The canonical plural noun the query is about. */
-  subject: string;
-  /** The data type that noun came from. */
+  /**
+   * Every entity type the query asks for, in the order they appear.
+   *
+   * More than one is a union, whichever word joined them: nothing is both a
+   * device and an aircraft, so a planner that reads "devices and aircraft" as a
+   * conjunction over one collection returns nothing and looks right doing it.
+   * Empty means the query named no type at all — see `anySubject`.
+   */
+  subjects: SubjectExpectation[];
+  /**
+   * The query asks for everything rather than for a type. The answer is every
+   * layer, or a question back — not a silent default to whichever one is first.
+   */
+  anySubject: boolean;
+  /** The data type the term set was generated for. */
   profile: string;
   places: PlaceExpectation[];
   time: TimeWindow;
@@ -218,13 +245,26 @@ interface PlanPlace {
 }
 
 /** How the sentence gets built, before the words are chosen. */
+/** One entity type in a query, before it becomes words. */
+interface PlanSubject {
+  /** The data type it came from. */
+  profile: string;
+  /** The schema's own plural. */
+  canonical: string;
+  /** How the user wrote it. */
+  typed: string;
+}
+
 interface Plan {
   intent: Intent;
-  subject: string;
-  /** The canonical plural, kept for the expectation. */
-  noun: string;
-  /** The plural as it appears in the text — the same, until it is misspelled. */
-  typedNoun: string;
+  /** Every type the query asks for. Empty when it asks for everything. */
+  subjects: PlanSubject[];
+  /** Whether the nouns take a possessive: "my devices". */
+  owned: boolean;
+  /** "everything in Tokyo" — no type named at all. */
+  anySubject: boolean;
+  /** How the nouns are written out, once the quirks have had their turn. */
+  subjectText: string;
   places: PlanPlace[];
   time: TimeWindow;
   /** No preposition at all: "devices tokyo last week". */
@@ -280,6 +320,9 @@ function preferNear(rng: Rng, opts: TermsOptions, options: Place[]): Place | nul
 
 function planTerm(rng: Rng, index: number, opts: TermsOptions, anchor: number): Plan {
   const subject = getSubject(opts.profile);
+  const subjects: PlanSubject[] = [
+    { profile: opts.profile, canonical: subject.plural, typed: subject.plural },
+  ];
   const intent = INTENTS[index % INTENTS.length];
   const places = pool(opts.near);
 
@@ -306,9 +349,10 @@ function planTerm(rng: Rng, index: number, opts: TermsOptions, anchor: number): 
 
   return {
     intent,
-    subject: subjectPhrase(subject, rng),
-    noun: subject.plural,
-    typedNoun: subject.plural,
+    subjects,
+    owned: subject.owned,
+    anySubject: false,
+    subjectText: subjectPhrase([subject.plural], subject.owned, rng),
     places: slots,
     time,
     keywords: false,
@@ -382,6 +426,29 @@ const HOMOGLYPHS: Record<string, string> = {
   E: "Е", H: "Н", K: "К", M: "М", O: "О",
   P: "Р", T: "Т", X: "Х",
 };
+
+/**
+ * Kinds of thing people name together.
+ *
+ * Not the taxonomy families — those group by where the data comes from, and
+ * would keep "devices and aircraft" apart while offering "devices and
+ * catchments", which is a query nobody has typed. These are the things that
+ * would sit on one map: things that move, things on the ground, things measured
+ * from orbit, and things about people.
+ */
+const ASKED_TOGETHER: string[][] = [
+  ["flight-adsb", "maritime-ais", "fleet-telematics", "transit-gtfs", "micromobility-mds", "mobile-location-pings"],
+  ["cadastral-parcels", "building-footprints", "zoning-land-use", "indoor-bim", "utility-networks"],
+  ["satellite-scene-footprints", "elevation-contours", "weather-observations", "land-cover-ndvi", "natural-hazard-zones"],
+  ["census-boundary", "health-epidemiology", "crime-incident", "geosocial-checkins", "poi-venues", "trade-area-catchment", "psychographics-spending"],
+];
+
+/** Rewrites the subject phrase from whatever the subjects now hold. */
+function retypeSubjects(plan: Plan, rng: Rng): void {
+  plan.subjectText = plan.anySubject
+    ? rng.pick(ANY_SUBJECT)
+    : subjectPhrase(plan.subjects.map((s) => s.typed), plan.owned, rng);
+}
 
 type PlanQuirk = (plan: Plan, rng: Rng, opts: TermsOptions, anchor: number) => string | null;
 
@@ -508,6 +575,19 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     const pick = preferNear(rng, opts, WORD_PLACES.map(getPlace).filter((p): p is Place => !!p));
     if (!pick) return null;
     swapTo(plan.places[0], pick);
+    // Mobile is the one where the collision can be made to bite twice, because
+    // "mobile" is also what people call the thing being tracked. This entry has
+    // carried "show me mobile devices in Mobile" as its example since it was
+    // written; here is where it earns it.
+    if (pick.id === "mobile" && plan.subjects.length === 1 && !plan.anySubject) {
+      plan.subjects[0] = {
+        profile: "mobile-location-pings",
+        canonical: getSubject("mobile-location-pings").plural,
+        typed: "mobile devices",
+      };
+      retypeSubjects(plan, rng);
+      return "\"Mobile devices in Mobile\" — the same word is the kind of thing and the place, in one sentence. One of the two occurrences is a place and the other is not, and nothing but position tells them apart.";
+    }
     return `"${plan.places[0].typed}" is a real place and an ordinary English word. A matcher scanning free text finds it in sentences that are not about geography.`;
   },
 
@@ -665,6 +745,63 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     return `One area minus another: ${first.typed} with ${candidate.name} taken out of it. The word order does not say which is subtracted from which.`;
   },
 
+  "many-subjects": (plan, rng) => {
+    const first = plan.subjects[0];
+    if (!first) return null;
+    const used = new Set(plan.subjects.map((s) => s.profile));
+    const group = ASKED_TOGETHER.find((g) => g.includes(first.profile)) ?? [];
+    const kin = PROFILES.filter((p) => group.includes(p.id) && !used.has(p.id) && SUBJECTS[p.id]);
+    const rest = PROFILES.filter((p) => !used.has(p.id) && SUBJECTS[p.id]);
+    const pool = kin.length ? kin : rest;
+    if (!pool.length) return null;
+
+    for (let i = 0; i < rng.int(1, 2); i++) {
+      const next = pool.filter((p) => !used.has(p.id));
+      if (!next.length) break;
+      const pick = rng.pick(next);
+      used.add(pick.id);
+      const subject = getSubject(pick.id);
+      plan.subjects.push({ profile: pick.id, canonical: subject.plural, typed: subject.plural });
+    }
+    if (plan.subjects.length < 2) return null;
+    // The possessive stops making sense across kinds — "my devices and aircraft"
+    // claims both — so a multi-kind query drops it.
+    plan.owned = false;
+    retypeSubjects(plan, rng);
+    const names = plan.subjects.map((s) => s.typed);
+    return (
+      `${names.length} kinds of thing in one query: ${joinNouns(names, "and")}. The answer is their ` +
+      "union — nothing is both, so reading the conjunction literally over one collection returns " +
+      "zero rows and looks like a correct empty result."
+    );
+  },
+
+  "subject-synonym": (plan, rng) => {
+    // A kind whose schema word is not the word anyone types.
+    const options = plan.subjects.filter((s) => getSubject(s.profile).aliases?.length);
+    const slot = options.length ? rng.pick(options) : null;
+    if (!slot) return null;
+    const aliases = getSubject(slot.profile).aliases as readonly string[];
+    const alias = rng.pick(aliases);
+    if (alias === slot.typed) return null;
+    const before = slot.canonical;
+    slot.typed = alias;
+    retypeSubjects(plan, rng);
+    return `"${alias}" is what people call ${before}. Your schema says ${before}; a search that only knows that word resolves the place, fails to resolve the thing, and returns everything or nothing depending on which way the unmatched token falls.`;
+  },
+
+  "any-subject": (plan, rng) => {
+    plan.anySubject = true;
+    plan.subjects = [];
+    plan.owned = false;
+    // "How many everything" is not a sentence. The quantifier intents need a
+    // countable noun and there is deliberately none here, so the query asks the
+    // question the other way round.
+    if (plan.intent === "count" || plan.intent === "presence") plan.intent = "history";
+    retypeSubjects(plan, rng);
+    return "No kind of thing named at all. The answer is every layer, or a question back — not a silent default to whichever one is first in the list.";
+  },
+
   "keyword-only": (plan) => {
     plan.keywords = true;
     return "No preposition to hang the place on. Anything that finds the place by looking for the word after \"in\" finds nothing here.";
@@ -677,17 +814,14 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
   },
 
   "misspelled-subject": (plan, rng) => {
-    const wrong = misspell(plan.noun, rng);
-    if (wrong === plan.noun) return null;
-    // Both, because a template may render either the possessive phrase or the
-    // bare noun, and a quirk that reported itself without appearing in half the
-    // sentences it was applied to would be the tool lying about its own output.
-    plan.typedNoun = wrong;
-    plan.subject = plan.subject
-      .split(" ")
-      .map((word, i, all) => (i === all.length - 1 ? wrong : word))
-      .join(" ");
-    return `The noun is misspelled and the place is not. The geography resolves, the subject does not, and a query that ignores the unmatched token matches every ${plan.noun.replace(/s$/, "")} on the account.`;
+    const slot = plan.subjects[0];
+    if (!slot) return null;
+    const wrong = misspell(slot.typed, rng);
+    if (wrong === slot.typed) return null;
+    const before = slot.typed;
+    slot.typed = wrong;
+    retypeSubjects(plan, rng);
+    return `"${wrong}" is "${before}" typed badly, and the place is not. The geography resolves, the thing being asked about does not, and a query that ignores the unmatched token matches every ${before.replace(/s$/, "")} on the account.`;
   },
 
   "other-language": (plan, rng) => {
@@ -703,6 +837,12 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     plan.keywords = false;
     plan.question = false;
     plan.exclusion = false;
+    // The renderer writes one noun, in this language. Anything the expectation
+    // still claimed in English would name a word the text does not contain.
+    plan.subjects = plan.subjects.slice(0, 1);
+    for (const slot of plan.subjects) {
+      slot.typed = language.subjects[slot.canonical.replace(/s$/, "")] ?? slot.canonical;
+    }
     // The translation table knows a handful of time expressions. Anything else
     // would be dropped by the renderer while the expectation went on claiming
     // it, so the window is dropped here instead, where the expectation sees it.
@@ -719,6 +859,9 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
   empty: (plan) => {
     plan.blank = true;
     plan.places = [];
+    plan.subjects = [];
+    plan.anySubject = false;
+    plan.subjectText = "";
     plan.time = NO_TIME;
     return "An empty query. The right response is a prompt — not a full table scan, and not a stack trace from something that assumed at least one token.";
   },
@@ -960,7 +1103,7 @@ function renderText(plan: Plan, rng: Rng): string {
 
   if (plan.language) {
     const lang = plan.language;
-    const noun = lang.subjects[plan.noun.replace(/s$/, "")] ?? plan.noun;
+    const noun = plan.subjects[0]?.typed ?? "records";
     // Already translated, by the quirk that chose the language — translating it
     // again here would look the phrase up by a key it no longer has and quietly
     // drop the window the expectation still names.
@@ -968,8 +1111,21 @@ function renderText(plan: Plan, rng: Rng): string {
     return lang.render(noun, name, time);
   }
 
-  const slots = { subject: plan.subject, bare: plan.typedNoun, place, time };
-  const text = plan.keywords ? renderKeywords(slots, rng) : render(plan.intent, slots, rng);
+  const slots = {
+    subject: plan.subjectText,
+    // The quantifier templates take the nouns without the possessive: "how many
+    // devices and aircraft", never "how many my devices and aircraft".
+    bare: plan.anySubject
+      ? plan.subjectText
+      : joinNouns(plan.subjects.map((s) => s.typed), "and"),
+    place,
+    time,
+  };
+  const text = plan.keywords
+    ? renderKeywords(slots, rng)
+    : plan.anySubject
+      ? renderAny(slots, rng)
+      : render(plan.intent, slots, rng);
   return plan.question ? `${text}?` : text;
 }
 
@@ -1041,7 +1197,12 @@ function expectation(plan: Plan, profile: string): TermExpectation {
 
   return {
     intent: plan.intent,
-    subject: plan.noun,
+    subjects: plan.subjects.map((s) => ({
+      typed: s.typed,
+      canonical: s.canonical,
+      dataType: s.profile,
+    })),
+    anySubject: plan.anySubject,
     profile,
     places,
     time: plan.time,
@@ -1171,7 +1332,11 @@ export function generateTerms(options: TermsOptions): TermSet {
       }
       text = result.text;
       if (result.retype) {
+        // Everything the expectation records verbatim goes through the same
+        // transform the sentence did — the kinds as well as the places and the
+        // window, or the term stops describing its own text.
         for (const slot of plan.places) slot.typed = result.retype(slot.typed);
+        for (const slot of plan.subjects) slot.typed = result.retype(slot.typed);
         if (plan.time.expression) {
           plan.time = { ...plan.time, expression: result.retype(plan.time.expression) };
         }

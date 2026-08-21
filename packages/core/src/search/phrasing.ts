@@ -37,6 +37,16 @@ export interface Subject {
   plural: string;
   /** True when a user would say "my devices" rather than "the devices". */
   owned: boolean;
+  /**
+   * What people call it instead of the word in your schema.
+   *
+   * Nobody types "aircraft" — they type planes, jets, flights, or aviation, and
+   * a search that only knows the schema's noun resolves the place, fails to
+   * resolve the thing, and returns everything or nothing depending on which way
+   * the unmatched token falls. The family the data type belongs to is not a
+   * synonym: "mobility" is a category, not a thing anyone searches for.
+   */
+  aliases?: readonly string[];
 }
 
 /**
@@ -45,30 +55,30 @@ export interface Subject {
  * generic noun — never to a wrong one.
  */
 export const SUBJECTS: Record<string, Subject> = {
-  generic: { singular: "record", plural: "records", owned: false },
-  "flight-adsb": { singular: "aircraft", plural: "aircraft", owned: false },
-  "maritime-ais": { singular: "vessel", plural: "vessels", owned: false },
-  "fleet-telematics": { singular: "vehicle", plural: "vehicles", owned: true },
-  "transit-gtfs": { singular: "bus", plural: "buses", owned: false },
-  "micromobility-mds": { singular: "scooter", plural: "scooters", owned: true },
-  "mobile-location-pings": { singular: "device", plural: "devices", owned: true },
-  "geosocial-checkins": { singular: "check-in", plural: "check-ins", owned: false },
-  "poi-venues": { singular: "venue", plural: "venues", owned: false },
-  "trade-area-catchment": { singular: "catchment", plural: "catchments", owned: true },
-  "psychographics-spending": { singular: "household", plural: "households", owned: false },
-  "cadastral-parcels": { singular: "parcel", plural: "parcels", owned: false },
-  "building-footprints": { singular: "building", plural: "buildings", owned: false },
-  "zoning-land-use": { singular: "zone", plural: "zones", owned: false },
-  "indoor-bim": { singular: "asset", plural: "assets", owned: true },
-  "utility-networks": { singular: "asset", plural: "assets", owned: true },
-  "satellite-scene-footprints": { singular: "scene", plural: "scenes", owned: false },
-  "elevation-contours": { singular: "contour", plural: "contours", owned: false },
-  "weather-observations": { singular: "station", plural: "stations", owned: false },
-  "land-cover-ndvi": { singular: "tile", plural: "tiles", owned: false },
-  "natural-hazard-zones": { singular: "hazard zone", plural: "hazard zones", owned: false },
-  "census-boundary": { singular: "tract", plural: "tracts", owned: false },
-  "crime-incident": { singular: "incident", plural: "incidents", owned: false },
-  "health-epidemiology": { singular: "case", plural: "cases", owned: false },
+  generic: { singular: "record", plural: "records", owned: false, aliases: ["rows", "entries", "features"] },
+  "flight-adsb": { singular: "aircraft", plural: "aircraft", owned: false, aliases: ["planes", "flights", "jets", "aviation", "air traffic"] },
+  "maritime-ais": { singular: "vessel", plural: "vessels", owned: false, aliases: ["ships", "boats", "shipping", "marine traffic"] },
+  "fleet-telematics": { singular: "vehicle", plural: "vehicles", owned: true, aliases: ["trucks", "vans", "lorries", "the fleet", "fleet vehicles"] },
+  "transit-gtfs": { singular: "bus", plural: "buses", owned: false, aliases: ["transit", "services", "public transport"] },
+  "micromobility-mds": { singular: "scooter", plural: "scooters", owned: true, aliases: ["e-scooters", "bikes", "micromobility"] },
+  "mobile-location-pings": { singular: "device", plural: "devices", owned: true, aliases: ["phones", "handsets", "mobiles", "mobile devices", "mobile"] },
+  "geosocial-checkins": { singular: "check-in", plural: "check-ins", owned: false, aliases: ["checkins", "posts", "social data"] },
+  "poi-venues": { singular: "venue", plural: "venues", owned: false, aliases: ["places", "POIs", "locations"] },
+  "trade-area-catchment": { singular: "catchment", plural: "catchments", owned: true, aliases: ["trade areas", "drive times"] },
+  "psychographics-spending": { singular: "household", plural: "households", owned: false, aliases: ["segments", "spend data"] },
+  "cadastral-parcels": { singular: "parcel", plural: "parcels", owned: false, aliases: ["lots", "plots", "titles", "land parcels"] },
+  "building-footprints": { singular: "building", plural: "buildings", owned: false, aliases: ["footprints", "structures"] },
+  "zoning-land-use": { singular: "zone", plural: "zones", owned: false, aliases: ["districts", "land use"] },
+  "indoor-bim": { singular: "asset", plural: "assets", owned: true, aliases: ["rooms", "spaces"] },
+  "utility-networks": { singular: "asset", plural: "assets", owned: true, aliases: ["mains", "pipes", "the network"] },
+  "satellite-scene-footprints": { singular: "scene", plural: "scenes", owned: false, aliases: ["scenes", "imagery", "captures"] },
+  "elevation-contours": { singular: "contour", plural: "contours", owned: false, aliases: ["isolines", "elevation"] },
+  "weather-observations": { singular: "station", plural: "stations", owned: false, aliases: ["sensors", "gauges", "weather"] },
+  "land-cover-ndvi": { singular: "tile", plural: "tiles", owned: false, aliases: ["rasters", "land cover"] },
+  "natural-hazard-zones": { singular: "hazard zone", plural: "hazard zones", owned: false, aliases: ["flood zones", "hazard areas"] },
+  "census-boundary": { singular: "tract", plural: "tracts", owned: false, aliases: ["census tracts", "block groups"] },
+  "crime-incident": { singular: "incident", plural: "incidents", owned: false, aliases: ["crimes", "reports", "offences"] },
+  "health-epidemiology": { singular: "case", plural: "cases", owned: false, aliases: ["infections", "notifications"] },
 };
 
 export const DEFAULT_SUBJECT_PROFILE = "mobile-location-pings";
@@ -77,11 +87,36 @@ export function getSubject(profile: string): Subject {
   return SUBJECTS[profile] ?? SUBJECTS.generic;
 }
 
-/** "my devices" / "the vessels" — and the bare noun, which is just as common. */
-export function subjectPhrase(subject: Subject, rng: Rng): string {
-  if (subject.owned) return rng.pick([`my ${subject.plural}`, subject.plural, `our ${subject.plural}`]);
-  return rng.pick([subject.plural, `all ${subject.plural}`, subject.plural]);
+/**
+ * "my devices", "the vessels", "devices and aircraft" — and the bare noun,
+ * which is just as common.
+ *
+ * Several nouns are joined by the word people actually use, which is "and" far
+ * more often than "or" even when they mean a union. That is the trap the
+ * multi-subject quirk exists to set: nothing is both a device and an aircraft,
+ * so a query planner that reads the conjunction literally returns an empty set
+ * with total confidence.
+ */
+export function subjectPhrase(nouns: string[], owned: boolean, rng: Rng): string {
+  const joined = joinNouns(nouns, rng.bool(0.75) ? "and" : "or");
+  if (owned) return rng.pick([`my ${joined}`, joined, `our ${joined}`]);
+  return rng.pick([joined, `all ${joined}`, joined]);
 }
+
+/** "devices", "devices and aircraft", "devices, aircraft and vessels". */
+export function joinNouns(nouns: string[], word: "and" | "or"): string {
+  if (nouns.length <= 1) return nouns[0] ?? "";
+  return `${nouns.slice(0, -1).join(", ")} ${word} ${nouns[nouns.length - 1]}`;
+}
+
+/**
+ * What a query asks for when it names no type at all. Not a subject — the
+ * absence of one — so it is rendered rather than drawn from the catalogue.
+ */
+// All mass or singular: they follow "that was" without disagreeing with it, and
+// "all layers that was in Tokyo" is the kind of small wrongness that makes a
+// fixture look machine-made.
+export const ANY_SUBJECT = ["everything", "anything", "all data", "any kind of thing"];
 
 export interface Slots {
   /** "my devices" */
@@ -116,10 +151,12 @@ function join(...parts: string[]): string {
 type Template = (s: Slots, rng: Rng) => string;
 
 /**
- * Templates per intent. Several apiece, because the same intent asked two ways
- * is the cheapest source of genuine variety — and because the difference
- * between "show me X in Y" and "X in Y" is exactly the preposition half of the
- * parsers in the world are anchored on.
+ * Templates per intent.
+ *
+ * Every one of them renders the subject slot. "Is there anything in Tokyo" is a
+ * real query and it is not here: it names no kind of thing, which is what the
+ * `any-subject` quirk means, and reaching it by accident made terms claim a
+ * noun their own text never contained.
  */
 const TEMPLATES: Record<Intent, Template[]> = {
   locate: [
@@ -134,7 +171,6 @@ const TEMPLATES: Record<Intent, Template[]> = {
     (s) => join("show me", s.subject, "that were", s.place, s.time),
     (s) => join("which", s.bare, "were", s.place, s.time),
     (s) => join(s.subject, "seen", s.place, s.time),
-    (s) => join("anything", s.place, s.time),
   ],
   count: [
     (s) => join("how many", s.bare, "were", s.place, s.time),
@@ -146,7 +182,6 @@ const TEMPLATES: Record<Intent, Template[]> = {
     (s) => join("were there any", s.bare, s.place, s.time),
     (s) => join("any", s.bare, s.place, s.time),
     (s) => join("did any", s.bare, "go", s.place, s.time),
-    (s) => join("is there anything", s.place, s.time),
   ],
   list: [
     (s) => join("list", s.subject, s.place, s.time),
@@ -163,6 +198,26 @@ const TEMPLATES: Record<Intent, Template[]> = {
 
 export function render(intent: Intent, slots: Slots, rng: Rng): string {
   return rng.pick(TEMPLATES[intent])(slots, rng);
+}
+
+/**
+ * A query that names no kind of thing.
+ *
+ * "Everything" is a mass noun and most of the templates above want a countable
+ * one — "which everything were in Tokyo" is not a sentence — so this phrasing
+ * is its own small set rather than a filter over the others. One of them names
+ * nothing at all, which is the purest form of the case: "what was in Tokyo last
+ * week" is a real question with no entity type in it anywhere.
+ */
+export function renderAny(slots: Slots, rng: Rng): string {
+  return rng.pick<Template>([
+    (s) => join("show me", s.subject, s.place, s.time),
+    (s) => join(s.subject, s.place, s.time),
+    (s) => join("what was", s.place, s.time),
+    (s) => join("list", s.subject, s.place, s.time),
+    (s) => join(s.subject, "that was", s.place, s.time),
+    (s) => join("show me", s.subject, "seen", s.place, s.time),
+  ])(slots, rng);
 }
 
 /**

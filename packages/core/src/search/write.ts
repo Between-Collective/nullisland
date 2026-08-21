@@ -89,7 +89,10 @@ function termToJson(term: SearchTerm): Record<string, unknown> {
     ...(term.skipped.length ? { skipped: term.skipped } : {}),
     expect: {
       intent: term.expect.intent,
-      subject: term.expect.subject,
+      // Spelled out even when there is one, so a caller never has to know that a
+      // bare string would have meant "exactly one kind".
+      subjects: term.expect.subjects,
+      anySubject: term.expect.anySubject,
       dataType: term.expect.profile,
       resolvable: term.expect.resolvable,
       ambiguous: term.expect.ambiguous,
@@ -147,7 +150,9 @@ const CSV_HEADER = [
   "clean_query",
   "quirks",
   "intent",
-  "subject",
+  "subjects_typed",
+  "subjects_resolved",
+  "data_types",
   "places_typed",
   "places_resolved",
   "place_ids",
@@ -176,7 +181,9 @@ function writeCsv(set: TermSet): string {
         term.clean,
         term.quirks.join(" "),
         term.expect.intent,
-        term.expect.subject,
+        term.expect.anySubject ? "(any)" : term.expect.subjects.map((s) => s.typed).join(" | "),
+        term.expect.anySubject ? "(any)" : term.expect.subjects.map((s) => s.canonical).join(" | "),
+        term.expect.subjects.map((s) => s.dataType).join(" | "),
         places.map((p) => p.typed).join(" | "),
         places.map((p) => p.name ?? "(unresolvable)").join(" | "),
         places.map((p) => p.id ?? "").join(" | "),
@@ -320,7 +327,14 @@ function writeMd(set: TermSet): string {
     lines.push(`### ${term.id}. \`${term.text.trim() || "(empty)"}\``, "");
     if (labels.length) lines.push(`Quirks: ${labels.join(", ")}`, "");
     else lines.push("Nothing wrong with this one — it is a control case.", "");
-    lines.push(`Intent: ${term.expect.intent} · Subject: ${term.expect.subject}`);
+    lines.push(
+      `Intent: ${term.expect.intent} · Asks for: ` +
+        (term.expect.anySubject
+          ? "everything — no kind of thing named"
+          : term.expect.subjects
+              .map((s) => (s.typed === s.canonical ? s.canonical : `${s.typed} (${s.canonical})`))
+              .join(" + ")),
+    );
     if (term.clean.trim() && term.clean !== term.text) {
       lines.push(`Written cleanly, this is: \`${term.clean.trim()}\``);
     }

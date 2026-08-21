@@ -1421,6 +1421,48 @@ console.log("\n10. search terms");
     ok("a bad anchor falls back to the default", bad.stats.anchor === DEFAULT_ANCHOR, bad.stats.anchor);
   }
 
+  /* ── queries that name more than one kind of thing, or none ───────────── */
+  {
+    const set = generateTerms(termOpts({ count: 300, intensity: 0.5 }));
+
+    // The expectation is a list because a query can ask for several kinds. It
+    // has to stay a list even when there is one, or a caller has to special-case
+    // the common shape.
+    ok("every term carries its kinds as a list",
+      set.terms.every((t) => Array.isArray(t.expect.subjects)));
+    ok("a term naming no kind says so rather than guessing one",
+      set.terms.every((t) => !t.expect.anySubject || t.expect.subjects.length === 0));
+    ok("a term naming a kind is not also marked as naming none",
+      set.terms.every((t) => t.expect.subjects.length === 0 || !t.expect.anySubject));
+
+    // Every kind resolves to a real data type, and to the noun that data type
+    // actually uses — a synonym changes what was typed, never what it means.
+    const kinds = set.terms.flatMap((t) => t.expect.subjects);
+    ok("every kind names a real data type",
+      kinds.every((s) => PROFILES.some((p) => p.id === s.dataType)), 
+      kinds.filter((s) => !PROFILES.some((p) => p.id === s.dataType)).map((s) => s.dataType).join(","));
+    ok("every kind keeps the schema's own word alongside the typed one",
+      kinds.every((s) => SUBJECTS[s.dataType]?.plural === s.canonical),
+      kinds.filter((s) => SUBJECTS[s.dataType]?.plural !== s.canonical).map((s) => `${s.dataType}:${s.canonical}`)[0] ?? "");
+    ok("no term names the same kind twice",
+      set.terms.every((t) => new Set(t.expect.subjects.map((s) => s.dataType)).size === t.expect.subjects.length));
+
+    const multi = set.terms.filter((t) => t.expect.subjects.length > 1);
+    ok("some term asks for more than one kind", multi.length > 0, `${multi.length} of ${set.terms.length}`);
+    // A union across kinds is the answer, so a query asking for two of them has
+    // to actually write both nouns down.
+    ok("a multi-kind query writes every noun it claims",
+      multi.every((t) => t.expect.subjects.every((s) => t.text.includes(s.typed))));
+
+    const synonyms = set.terms.filter((t) => t.expect.subjects.some((s) => s.typed !== s.canonical));
+    ok("some term uses the user's word rather than the schema's", synonyms.length > 0);
+
+    const any = set.terms.filter((t) => t.expect.anySubject);
+    ok("some term names no kind at all", any.length > 0);
+    ok("a term naming no kind still says what a correct search does",
+      any.every((t) => t.notes.length > 0));
+  }
+
   /* ── every data type has a noun, so a term can be about it ────────────── */
   {
     const missing = PROFILES.filter((p) => !SUBJECTS[p.id]).map((p) => p.id);
@@ -1430,7 +1472,13 @@ console.log("\n10. search terms");
     // And the noun really reaches the query, or the data type is decorative.
     const set = generateTerms(termOpts({ profile: "maritime-ais", count: 12, clean: true }));
     ok("the data type decides the noun",
-      set.terms.some((t) => t.text.includes("vessels")) && set.stats.profile === "maritime-ais");
+      set.terms.some((t) => t.expect.subjects.some((s) => s.canonical === "vessels")) &&
+        set.stats.profile === "maritime-ais");
+    // Nobody types the schema's word. Every data type needs the words people do
+    // type, or `subject-synonym` has nothing to reach for.
+    const withoutAliases = PROFILES.filter((p) => !(SUBJECTS[p.id]?.aliases?.length));
+    ok("every data type has the words people really use", withoutAliases.length === 0,
+      withoutAliases.map((p) => p.id).join(","));
   }
 }
 

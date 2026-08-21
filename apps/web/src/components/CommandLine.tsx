@@ -84,7 +84,7 @@ const COMMANDS: Command[] = [
       </>
     ),
     command:
-      "npx nullisland --terms 43 --type mobile-location-pings --out fixtures/search",
+      "npx nullisland --terms 46 --type mobile-location-pings --out fixtures/search",
   },
   {
     title: "Search terms pinned to one place",

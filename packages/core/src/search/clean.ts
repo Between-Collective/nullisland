@@ -58,6 +58,13 @@ function describesItsOwnText(term: SearchTerm): boolean {
     if (!place.typed) return false;
     if (!term.text.includes(place.typed)) return false;
   }
+  // Every kind of thing the expectation names has to be in the sentence too. A
+  // term promising "devices and aircraft" whose text says only "devices" would
+  // fail every reader forever, and for this tool's reason rather than theirs.
+  for (const subject of term.expect.subjects) {
+    if (!subject.typed) return false;
+    if (!term.text.includes(subject.typed)) return false;
+  }
   const expression = term.expect.time.expression;
   if (expression && !term.text.includes(expression)) return false;
   return true;
@@ -76,11 +83,11 @@ export function inspectTerms(set: TermSet): CleanReport {
     label: "Every expectation matches its own query text",
     ok: mismatched.length === 0,
     detail: mismatched.length
-      ? `${group(mismatched.length)} describe a place or a window their text does not contain (${mismatched
+      ? `${group(mismatched.length)} describe a kind, a place or a window their text does not contain (${mismatched
           .slice(0, 3)
           .map((t) => t.id)
           .join(", ")})`
-      : `${group(terms.length)} checked, every named place and window present verbatim`,
+      : `${group(terms.length)} checked, every named kind, place and window present verbatim`,
   });
 
   // These coordinates reach a bounding-box assertion in somebody's test suite,
@@ -179,6 +186,24 @@ export function inspectTerms(set: TermSet): CleanReport {
     detail: unanswerable.length
       ? `${group(unanswerable.length)} cannot match anything whatever the data holds`
       : "no future windows and no inverted ranges",
+  });
+
+  const vague = terms.filter((t) => t.expect.anySubject || t.expect.subjects.length !== 1);
+  checks.push({
+    label: "Every query names exactly one kind of thing",
+    ok: vague.length === 0,
+    detail: vague.length
+      ? `${group(vague.length)} name several kinds, or none`
+      : `${group(terms.length)} terms, one kind each`,
+  });
+
+  const renamed = terms.filter((t) => t.expect.subjects.some((s) => s.typed !== s.canonical));
+  checks.push({
+    label: "Every kind is called what the schema calls it",
+    ok: renamed.length === 0,
+    detail: renamed.length
+      ? `${group(renamed.length)} use a synonym instead of the schema's word`
+      : "no synonyms and no misspellings",
   });
 
   const quirked = terms.filter((t) => t.quirks.length);

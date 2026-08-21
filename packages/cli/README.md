@@ -29,7 +29,7 @@ nullisland --format csv --count 20 --stdout | wc -l
 nullisland --package 9 --clean --extract --out test/fixtures/clean
 
 # And the other end of it: the search terms your users type, with the parse each should get
-nullisland --terms 43 --type mobile-location-pings --out test/fixtures/search
+nullisland --terms 46 --type mobile-location-pings --out test/fixtures/search
 ```
 
 ## What it makes
@@ -40,7 +40,7 @@ Nine formats — GeoJSON, GeoJSONL, CSV, KML, KMZ, GPX, WKT, TopoJSON and a real
 
 `--clean` builds the opposite of the usual output: a valid file with nothing wrong with it, checked before it is written and exiting non-zero if a check fails. `--package --clean` does the same across every format at once — the control set to run before the broken one.
 
-`--terms` builds search terms instead of files: the sentences somebody types above a map — *devices in Tokyo and Kyoto*, *devices in new zealand*, *devices that were in the Estádio da Luz in Lisbon last week* — each one carrying the parse it should have received. 43 quirks in the catalogue, dealt one per term, so a set of 43 is 43 different problems rather than 43 rolls of the same dice. `--list quirks` prints them and `--list places` prints the gazetteer they resolve against.
+`--terms` builds search terms instead of files: the sentences somebody types above a map — *devices in Tokyo and Kyoto*, *devices and aircraft in new zealand*, *devices that were in the Estádio da Luz in Lisbon last week* — each one carrying the parse it should have received. 46 quirks in the catalogue, dealt one per term, so a set of 46 is 46 different problems rather than 46 rolls of the same dice. `--list quirks` prints them and `--list places` prints the gazetteer they resolve against.
 
 `--boundary` writes a second GeoJSON — the area you would filter by — and reports how many features a `contains` and an `intersects` filter should each return, measured from the finished file.
 
@@ -138,7 +138,10 @@ nullisland --list types --json | jq '.dataTypes[] | select(.id=="maritime-ais") 
   "quirks": ["ambiguous-place"],                // what was applied, not what was asked for
   "expect": {
     "intent": "history",
-    "subject": "devices",
+    // Always a list: a query can name several kinds, and the answer is their
+    // union. `anySubject` is true when it names none at all.
+    "subjects": [{ "typed": "devices", "canonical": "devices", "dataType": "mobile-location-pings" }],
+    "anySubject": false,
     "resolvable": true,                         // something is there to resolve
     "ambiguous": true,                          // more than one place answers to a name in it
     "empty": false,                             // true when zero rows is the only correct answer
@@ -173,13 +176,13 @@ nullisland --list types --json | jq '.dataTypes[] | select(.id=="maritime-ais") 
 nullisland --terms 40 --near tokyo --term-format txt --stdout
 
 # Every term whose only correct answer is zero rows
-nullisland --terms 43 --stdout | jq -r 'select(.expect.empty) | .query'
+nullisland --terms 46 --stdout | jq -r 'select(.expect.empty) | .query'
 
 # Every quirk that needs a place in the query before it means anything
 nullisland --list quirks --json | jq -r '.quirks[] | select(.needs=="place") | .id'
 
 # A report to hand a reviewer, rather than a file to assert against
-nullisland --terms 43 --term-format md --out docs
+nullisland --terms 46 --term-format md --out docs
 ```
 
 **Exit codes.** `0` success · `1` a clean file, or a term set, failed its own check — which is a bug in Null Island rather than in your settings · `2` a usage error, printed on stderr. An unknown option, data type, problem, quirk or place id is always an error and never a silent default: a run that quietly ignored a typo would hand back a file you would go on to believe things about.

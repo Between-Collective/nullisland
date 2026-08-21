@@ -112,6 +112,31 @@ function Row({ term }: { term: SearchTerm }) {
       {/* The expected parse. This is the thing you assert against, so it is on
           screen rather than only in the file. */}
       <div className="mt-1.5 space-y-0.5 pl-9 font-mono text-[10.5px] leading-relaxed text-dim">
+        {/* Only worth a line when it is not the obvious one: a single kind
+            called what the schema calls it says nothing you cannot see. */}
+        {term.expect.anySubject ? (
+          <div>
+            <span className="text-cat-attributes">
+              no kind named — every layer, or a question back
+            </span>
+          </div>
+        ) : term.expect.subjects.length > 1 ||
+          term.expect.subjects.some((s) => s.typed !== s.canonical) ? (
+          <div>
+            {term.expect.subjects.map((subject, i) => (
+              <span key={i}>
+                {i > 0 && <span className="text-dim"> + </span>}
+                <span className="text-muted">{visible(subject.typed)}</span>
+                {" → "}
+                <span className="text-mint-ink">{subject.canonical}</span>
+                <span className="text-dim"> ({subject.dataType})</span>
+              </span>
+            ))}
+            {term.expect.subjects.length > 1 && (
+              <span className="text-cat-attributes"> · union, not intersection</span>
+            )}
+          </div>
+        ) : null}
         {places.length === 0 && <div>no place — nothing to filter on</div>}
         {places.map((place, i) => (
           <div key={i}>

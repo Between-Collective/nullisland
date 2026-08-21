@@ -201,14 +201,14 @@ The whole package derives from one seed, so `nullisland-pack-9-sand-frost-ember.
 A map has two inputs. The file is one. The other is the sentence in the search box, and it fails in a completely different set of ways — so the same idea is applied to it: a control case first, then one thing hard at a time, everything reproducible from a seed.
 
 ```bash
-npx nullisland --terms 43 --type mobile-location-pings --out test/fixtures/search
+npx nullisland --terms 46 --type mobile-location-pings --out test/fixtures/search
 ```
 
-The catalogue has **43 quirks** across five categories, and with none selected they are dealt out one per term — so a set of 43 is 43 different problems rather than 43 rolls of the same dice.
+The catalogue has **46 quirks** across five categories, and with none selected they are dealt out one per term — so a set of 46 is 46 different problems rather than 46 rolls of the same dice.
 
 - **Place** — a misspelled venue, a name that means two cities, an endonym, an abbreviation, a former name, a place that does not exist, a whole country whose real bounding box is not the one everybody draws.
 - **Time** — *last week* (the previous calendar week, or a rolling seven days?), `03/04/2024` (both readings are valid dates, weeks apart), *next week* for historic positions, a range with its ends the wrong way round.
-- **Phrasing** — no place at all, a negation, one area minus another, keywords with no preposition to hang the place on, a question, politeness, another language entirely.
+- **Phrasing** — no place at all, a negation, one area minus another, keywords with no preposition to hang the place on, a question, politeness, another language entirely. And what the query is *about*: several kinds of thing at once, the user's word rather than your schema's, or no kind at all.
 - **Encoding** — curly quotes out of a word processor, a non-breaking space inside *New York*, a zero-width space, a Cyrillic `о` in *Tokyo*, UTF-8 read as Latin-1.
 - **Adversarial** — an apostrophe in a name that has always had one, instructions aimed at the model behind the search, a newline in the middle, far more input than expected.
 
@@ -219,6 +219,7 @@ The part that makes them fixtures rather than strings is what travels beside the
   "query": "devices that were in Dublin in the past 3 days",
   "quirks": ["ambiguous-place"],
   "expect": {
+    "subjects": [{ "typed": "devices", "canonical": "devices", "dataType": "mobile-location-pings" }],
     "ambiguous": true,
     "places": [{
       "typed": "Dublin",
@@ -232,6 +233,24 @@ The part that makes them fixtures rather than strings is what travels beside the
   }
 }
 ```
+
+### More than one kind of thing
+
+A query does not have to be about one layer. `devices and aircraft in Tokyo` names two, and the answer is their **union** — nothing is both, so a planner that reads the conjunction literally over one collection returns zero rows and looks right doing it. `everything in Tokyo` names none, and the answer is every layer or a question back, not a silent default to whichever is first.
+
+So `subjects` is always a list, and it carries what was typed alongside what your schema calls it:
+
+```jsonc
+"subjects": [
+  { "typed": "devices", "canonical": "devices",  "dataType": "mobile-location-pings" },
+  { "typed": "planes",  "canonical": "aircraft", "dataType": "flight-adsb" }
+],
+"anySubject": false
+```
+
+`typed` and `canonical` differ whenever somebody used their word instead of yours — planes for aircraft, boats for vessels, phones for devices, lorries for vehicles. That is its own quirk, and it is the one that quietly widens a query to everything: the place resolves, the kind does not, and the unmatched token has to go somewhere.
+
+Kinds are drawn from the ones people name in the same breath — things that move, things on the ground, things measured from orbit, things about people — so you get `aircraft and vessels` rather than `devices and census tracts`.
 
 `resolvesTo` is null in exactly the two cases where no single answer is correct — the name belongs to nowhere, or to more than one somewhere — because a search that returns one result confidently is the failure this is here to catch, and an expectation that named a winner would contradict its own note.
 
@@ -270,7 +289,7 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,387 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,414 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 
@@ -300,7 +319,7 @@ npx nullisland --package 9 --clean --extract --out test/fixtures/clean
 npx nullisland --package 9 --extract --out test/fixtures --seed sand-frost-ember
 npx nullisland --from-url 'https://nullisland.app/#f=geojson&d=flight-adsb&s=quartz-harbor-drift'
 npx nullisland --format geojson --count 20 --json | jq '.notes'
-npx nullisland --terms 43 --type mobile-location-pings --out test/fixtures/search
+npx nullisland --terms 46 --type mobile-location-pings --out test/fixtures/search
 npx nullisland --terms 40 --near tokyo --term-format txt --stdout
 npx nullisland --list quirks --json | jq -r '.quirks[] | select(.needs=="place") | .id'
 ```

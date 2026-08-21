@@ -75,7 +75,9 @@ Same shape, one directory over in `packages/core/src/search/`:
 
 A quirk has a **phase**, exactly as a problem does: `plan` changes what the query asks for — which place, which window, how the sentence is built — and so changes the expected answer alongside the words; `text` runs on the finished string and leaves the expectation alone. A text quirk that rewrites the whole sentence (casing, curly quotes) must return a `retype` so the place names recorded in the expectation are rewritten the same way, or the term stops describing itself.
 
-With no quirks selected the catalogue is dealt out one per term, so a set of 43 is 43 different problems. `clean: true` is how you ask for none.
+With no quirks selected the catalogue is dealt out one per term, so a set of 46 is 46 different problems. `clean: true` is how you ask for none.
+
+A term can name several kinds of thing, or none: `expect.subjects` is always a list of `{typed, canonical, dataType}` and `expect.anySubject` covers "everything in Tokyo". Several kinds means a **union** — nothing is both a device and an aircraft — and `typed` differs from `canonical` whenever somebody used their word rather than the schema's. Every template in `phrasing.ts` must render the subject slot; one that does not makes every term claim a noun its own text lacks, which is what `inspectTerms` will fail on.
 
 Adding a quirk is a catalogue entry plus one transform, and `verify.ts` will fail the build if the entry exists with nothing behind it.
 
