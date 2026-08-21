@@ -66,6 +66,9 @@ const LINK_AUTORUN_LIMIT = 10000;
 
 const TERM_DEFAULTS: TermsConfig = {
   count: QUIRKS.length,
+  // Empty follows the file half's data type. Ticking a second kind here is what
+  // turns a set of queries about one feed into queries that span several.
+  profiles: [],
   quirks: [],
   intensity: 0.15,
   near: "anywhere",
@@ -338,6 +341,8 @@ export function Generator() {
   // through to location pings — "devices". Pick any real data type and both
   // halves follow it: vessels for AIS, parcels for cadastral.
   const termProfile = opts.profile === DEFAULT_PROFILE ? DEFAULT_SUBJECT_PROFILE : opts.profile;
+  // The kinds actually in play: what was ticked, or the file half's data type.
+  const termProfiles = terms.profiles.length ? terms.profiles : [termProfile];
 
   const shareTitle =
     mode === "terms"
@@ -385,13 +390,7 @@ export function Generator() {
               countIndex={closestStep(opts.count)}
             />
           ) : (
-            <TermsSidebar
-              terms={terms}
-              profile={opts.profile}
-              subjectProfile={termProfile}
-              patchTerms={patchTerms}
-              onProfile={(id) => patch({ profile: id })}
-            />
+            <TermsSidebar terms={terms} subjectProfile={termProfile} patchTerms={patchTerms} />
           )}
         </aside>
 
@@ -456,12 +455,12 @@ export function Generator() {
 
           {mode === "terms" ? (
             <div className="space-y-3">
-              <TermsPanel seed={opts.seed} profile={termProfile} terms={terms} />
+              <TermsPanel seed={opts.seed} profile={termProfiles[0]} profiles={termProfiles} terms={terms} />
               <div className="pt-5">
                 <QuirkGrid
                   selected={terms.quirks}
                   clean={terms.clean}
-                  profile={termProfile}
+                  profile={termProfiles[0]}
                   onToggle={(id) =>
                     setTerms((current) => ({
                       ...current,

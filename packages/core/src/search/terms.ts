@@ -179,6 +179,16 @@ export interface TermsOptions {
   /** The data type the subject noun comes from. See profiles. */
   profile: string;
   /**
+   * Every kind a term may be about, when you want more than one in play.
+   *
+   * Empty means just `profile`, and behaves exactly as it did before this
+   * existed. With two or more, terms spread across them and `many-subjects`
+   * combines those rather than reaching for whatever the catalogue offers —
+   * which is the difference between "a query about several kinds" and "a query
+   * about the several kinds I am actually shipping".
+   */
+  profiles?: string[];
+  /**
    * Quirk ids. Empty deals the whole catalogue out one per term, which is what
    * makes a set of forty terms forty different problems rather than forty rolls
    * of the same dice. `clean` is how you ask for none.
@@ -291,6 +301,19 @@ function slotFor(place: Place): PlanPlace {
   };
 }
 
+/**
+ * The kinds in play. One unless the caller asked for more.
+ *
+ * Unknown ids are dropped rather than carried into the generator, and the
+ * primary is kept at the front so a single-kind set is still about the data
+ * type it names.
+ */
+function kindsInPlay(opts: TermsOptions): string[] {
+  const asked = (opts.profiles ?? []).filter((id) => SUBJECTS[id]);
+  if (!asked.length) return [opts.profile];
+  return asked.includes(opts.profile) ? asked : [opts.profile, ...asked];
+}
+
 /** The pool a term draws its places from. */
 function pool(near: string): Place[] {
   if (near === "anywhere") return PLACES;
@@ -319,9 +342,14 @@ function preferNear(rng: Rng, opts: TermsOptions, options: Place[]): Place | nul
 }
 
 function planTerm(rng: Rng, index: number, opts: TermsOptions, anchor: number): Plan {
-  const subject = getSubject(opts.profile);
+  const kinds = kindsInPlay(opts);
+  // No draw at all when there is one kind, so every seed generated before this
+  // option existed still reproduces byte for byte: an extra `rng.pick` here
+  // would shift the whole stream for every term after it.
+  const kind = kinds.length > 1 ? rng.pick(kinds) : kinds[0];
+  const subject = getSubject(kind);
   const subjects: PlanSubject[] = [
-    { profile: opts.profile, canonical: subject.plural, typed: subject.plural },
+    { profile: kind, canonical: subject.plural, typed: subject.plural },
   ];
   const intent = INTENTS[index % INTENTS.length];
   const places = pool(opts.near);
@@ -745,11 +773,14 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     return `One area minus another: ${first.typed} with ${candidate.name} taken out of it. The word order does not say which is subtracted from which.`;
   },
 
-  "many-subjects": (plan, rng) => {
+  "many-subjects": (plan, rng, opts) => {
     const first = plan.subjects[0];
     if (!first) return null;
     const used = new Set(plan.subjects.map((s) => s.profile));
-    const group = ASKED_TOGETHER.find((g) => g.includes(first.profile)) ?? [];
+    // When the caller named the kinds they ship, combine those and nothing
+    // else. Guessing at an affinity group is only useful when they did not.
+    const asked = kindsInPlay(opts);
+    const group = asked.length > 1 ? asked : ASKED_TOGETHER.find((g) => g.includes(first.profile)) ?? [];
     const kin = PROFILES.filter((p) => group.includes(p.id) && !used.has(p.id) && SUBJECTS[p.id]);
     const rest = PROFILES.filter((p) => !used.has(p.id) && SUBJECTS[p.id]);
     const pool = kin.length ? kin : rest;

@@ -2,6 +2,7 @@
 
 import { Field, Segmented, type Option } from "./ui";
 import {
+  DEFAULT_PROFILE,
   FAMILIES,
   PLACES,
   QUIRKS,
@@ -38,61 +39,124 @@ const NEAR_GROUPS = [
 
 export function TermsSidebar({
   terms,
-  profile,
   subjectProfile,
   patchTerms,
-  onProfile,
 }: {
   terms: TermsConfig;
-  /** Shared with the file half: one data type for the whole app. */
-  profile: string;
   /**
-   * The data type the noun actually comes from. The same as `profile`, except
-   * for the generic export — a schema with no subject, since nobody searches
-   * for "records" — which falls through to location pings.
+   * The data type the noun falls back to when nothing is ticked. The file
+   * half's, except for the generic export — a schema with no subject, since
+   * nobody searches for "records" — which falls through to location pings.
    */
   subjectProfile: string;
   patchTerms: (next: Partial<TermsConfig>) => void;
-  onProfile: (id: string) => void;
 }) {
-  const subject = getSubject(subjectProfile);
-  const isGeneric = profile !== subjectProfile;
+  const chosen = terms.profiles.length ? terms.profiles : [subjectProfile];
+  // The noun in the copy is whatever the query will actually say: one kind, or
+  // the list of them joined the way the query joins them.
+  const subject = {
+    plural: chosen.map((id) => getSubject(id).plural).join(" and "),
+  };
+  const combining = terms.quirks.includes("many-subjects");
+
+  const toggleKind = (id: string) => {
+    const next = chosen.includes(id) ? chosen.filter((k) => k !== id) : [...chosen, id];
+    // Never nothing: a set with no kind in it is the `any-subject` quirk, and
+    // that is asked for in the catalogue rather than by emptying this list.
+    if (!next.length) return;
+    patchTerms({ profiles: next });
+  };
+
+  const onCombine = () =>
+    patchTerms({
+      clean: false,
+      quirks: combining
+        ? terms.quirks.filter((q) => q !== "many-subjects")
+        : [...terms.quirks, "many-subjects"],
+    });
   const near = terms.near === "anywhere" ? null : getPlace(terms.near);
 
   return (
     <>
-      {/* The subject noun comes from the data type, so it is the same control
-          the file half uses — pick Maritime AIS and both the fixture and the
-          queries about it are about vessels. */}
+      {/* One kind or several. A query naming two is a different problem from a
+          query naming one — the answer is their union, and nothing is both — so
+          which kinds are in play is a control rather than something the
+          generator picks for you. */}
       <div className="space-y-2.5">
-        <Field label="Data type">
-          <select
-            value={profile}
-            onChange={(e) => onProfile(e.target.value)}
-            aria-label="Data type"
-            className="w-full rounded-full border border-line-strong bg-white px-3.5 py-2 text-[12px] text-ink"
-          >
+        <Field label="Kinds of thing" value={`${chosen.length} selected`}>
+          <div className="scroll-thin max-h-[188px] overflow-y-auto rounded-2xl border border-line-strong bg-white">
             {FAMILIES.map((family) => {
-              const inFamily = profilesInFamily(family.id);
+              const inFamily = profilesInFamily(family.id).filter((p) => p.id !== DEFAULT_PROFILE);
               if (!inFamily.length) return null;
               return (
-                <optgroup key={family.id} label={family.label}>
-                  {inFamily.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.label}
-                    </option>
-                  ))}
-                </optgroup>
+                <div key={family.id}>
+                  <p className="sticky top-0 bg-paper px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.11em] text-dim">
+                    {family.label}
+                  </p>
+                  {inFamily.map((entry) => {
+                    const on = chosen.includes(entry.id);
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        onClick={() => toggleKind(entry.id)}
+                        title={getSubject(entry.id).plural}
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-paper"
+                      >
+                        <span
+                          aria-hidden
+                          className={[
+                            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border text-[9px] leading-none",
+                            on ? "border-ink bg-ink text-white" : "border-line-strong text-transparent",
+                          ].join(" ")}
+                        >
+                          ✓
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink">
+                          {entry.label}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] text-dim">
+                          {getSubject(entry.id).plural}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               );
             })}
-          </select>
+          </div>
         </Field>
-        <p className="text-[11.5px] leading-relaxed text-muted">
-          Queries about <strong className="font-semibold text-ink">{subject.plural}</strong>.{" "}
-          {isGeneric
-            ? "The generic export has no subject to search for, so these fall through to devices. Pick a real data type and the terms follow it — vessels for AIS, parcels for cadastral."
-            : "The noun follows the data type, so terms generated beside a fixture are about the thing in it."}
-        </p>
+
+        {chosen.length > 1 ? (
+          <>
+            <button
+              type="button"
+              aria-pressed={combining}
+              onClick={onCombine}
+              className={[
+                "w-full rounded-full border px-3 py-2 text-[12px] font-medium transition-colors",
+                combining
+                  ? "border-ink bg-ink text-white"
+                  : "border-line-strong bg-white text-ink hover:border-dim",
+              ].join(" ")}
+            >
+              {combining ? "Every query names them together" : "Combine them in one query"}
+            </button>
+            <p className="text-[11.5px] leading-relaxed text-muted">
+              {combining
+                ? `Every term asks for ${subject.plural} together — and the answer is their union. Nothing is both, so a planner reading the "and" literally over one collection returns zero rows and looks right doing it.`
+                : `Terms are spread across ${chosen.length} kinds, one each. Combine them to put ${subject.plural} in the same query.`}
+            </p>
+          </>
+        ) : (
+          <p className="text-[11.5px] leading-relaxed text-muted">
+            Queries about <strong className="font-semibold text-ink">{subject.plural}</strong>. Tick
+            another kind to get queries that span more than one — which is a different problem, and
+            the one where an empty result looks like a correct answer.
+          </p>
+        )}
       </div>
 
       <div className="space-y-5 border-t border-line pt-5">

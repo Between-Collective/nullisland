@@ -82,7 +82,7 @@ interface Args {
 const TAKES_VALUE = new Set([
   "format", "type", "profile", "count", "shape", "region", "problems", "intensity",
   "seed", "boundary", "coverage", "out", "from-url", "url", "package", "list",
-  "terms", "term-format", "quirks", "near", "anchor",
+  "terms", "term-format", "quirks", "near", "anchor", "types",
 ]);
 
 const IS_FLAG = new Set([
@@ -728,6 +728,19 @@ function generateTermSet(args: Args): void {
     fail(`unknown data type "${profile}"`, `run \`${NAME} --list types\``);
   }
 
+  // More than one kind in play. A query naming two is a different problem from
+  // a query naming one — the answer is their union — so which kinds combine is
+  // something you say rather than something the catalogue picks for you.
+  const profiles = (args.values.get("types") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  for (const id of profiles) {
+    if (!PROFILES.some((p) => p.id === id)) {
+      fail(`unknown data type "${id}" in --types`, `run \`${NAME} --list types\``);
+    }
+  }
+
   const near = args.values.get("near") ?? "anywhere";
   if (near !== "anywhere" && !PLACES.some((p) => p.id === near)) {
     fail(`unknown place "${near}"`, `run \`${NAME} --list places\`, or use "anywhere"`);
@@ -744,7 +757,8 @@ function generateTermSet(args: Args): void {
   const set = generateTerms({
     seed,
     count,
-    profile,
+    profile: profiles[0] ?? profile,
+    profiles,
     quirks,
     intensity: clean ? 0 : number("--intensity", args.values.get("intensity"), 0.15, 0, 1),
     near,
@@ -780,7 +794,8 @@ function generateTermSet(args: Args): void {
         {
           file: path,
           format,
-          dataType: profile,
+          dataType: profiles[0] ?? profile,
+          dataTypes: profiles.length ? profiles : [profile],
           seed,
           anchor: set.stats.anchor,
           terms: set.terms.length,
@@ -809,7 +824,7 @@ function generateTermSet(args: Args): void {
   const out = process.stdout;
   out.write(`${path}\n`);
   out.write(
-    `\n${getTermFormat(format).label} · ${getProfile(profile).label} · ` +
+    `\n${getTermFormat(format).label} · ${profiles.length > 1 ? `${profiles.length} kinds` : getProfile(profiles[0] ?? profile).label} · ` +
       `${set.terms.length.toLocaleString()} terms · ${formatBytes(file.bytes)}` +
       `${set.stats.clean ? " · clean" : ` · ${set.stats.quirks.length} quirks`}\n` +
       `seed ${seed} · anchored to ${set.stats.anchor}\n`,

@@ -119,6 +119,11 @@ export type AppMode = "files" | "terms";
  */
 export interface TermsConfig {
   count: number;
+  /**
+   * The kinds a term may be about. Empty follows the file half's data type,
+   * which is what a link made before this existed carries.
+   */
+  profiles: string[];
   quirks: string[];
   intensity: number;
   near: string;
@@ -155,6 +160,7 @@ export function encodeApp(config: AppConfig): string {
   // flag is carried rather than inferred from the selection being empty.
   if (terms.clean) params.set("tc", "1");
   if (terms.quirks.length) params.set("tq", terms.quirks.join("."));
+  if (terms.profiles.length) params.set("tp", terms.profiles.join("."));
   return params.toString();
 }
 
@@ -200,6 +206,12 @@ export function decodeApp(hash: string): DecodedApp {
   if (quirks !== null) {
     const known = new Set(QUIRKS.map((q) => q.id));
     terms.quirks = quirks.split(".").filter((id) => known.has(id));
+  }
+
+  const profiles = params.get("tp");
+  if (profiles !== null) {
+    const known = new Set(PROFILES.map((p) => p.id));
+    terms.profiles = profiles.split(".").filter((id) => known.has(id));
   }
 
   if (Object.keys(terms).length) out.terms = terms;

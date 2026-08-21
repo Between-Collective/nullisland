@@ -82,6 +82,8 @@ SEARCH TERMS INSTEAD OF FILES
   --near <id>          build them around a place (--list places), or "anywhere"
   --anchor <iso>       the instant "last week" is relative to (default 2024-06-12T14:35:00.000Z)
   --type <id>          the data type the subject noun comes from — devices, vessels, parcels
+  --types <a,b,c>      several kinds in one set. Terms spread across them, and with
+                       --quirks many-subjects every query names them together
   --intensity <0-1>    how often a term picks up a second quirk (default 0.15)
   --term-format <id>   jsonl, json, csv, txt, md (default jsonl)
 
@@ -183,6 +185,9 @@ nullisland --list quirks --json | jq -r '.quirks[] | select(.needs=="place") | .
 
 # A report to hand a reviewer, rather than a file to assert against
 nullisland --terms 46 --term-format md --out docs
+
+# Queries that span the feeds you actually ship, every one of them
+nullisland --terms 40 --types mobile-location-pings,flight-adsb,maritime-ais --quirks many-subjects
 ```
 
 **Exit codes.** `0` success · `1` a clean file, or a term set, failed its own check — which is a bug in Null Island rather than in your settings · `2` a usage error, printed on stderr. An unknown option, data type, problem, quirk or place id is always an error and never a silent default: a run that quietly ignored a typo would hand back a file you would go on to believe things about.

@@ -1030,6 +1030,7 @@ console.log("\n9. the reproducibility promise");
   {
     const termsOf = (over: Partial<TermsConfig> = {}): TermsConfig => ({
       count: 43,
+      profiles: [],
       quirks: [],
       intensity: 0.15,
       near: "anywhere",
@@ -1053,6 +1054,7 @@ console.log("\n9. the reproducibility promise");
       appOf({ mode: "terms", terms: termsOf({ quirks: ["misspelled-place", "ambiguous-place"] }) }),
       appOf({ terms: termsOf({ count: 0, intensity: 1, near: "nz", format: "csv" }) }),
       appOf({ mode: "terms", file: opts({ format: "shapefile", profile: "maritime-ais" }) }),
+      appOf({ mode: "terms", terms: termsOf({ profiles: ["mobile-location-pings", "flight-adsb", "maritime-ais"] }) }),
     ];
     for (const config of cases) {
       const round = decodeApp("#" + encodeApp(config));
@@ -1098,6 +1100,10 @@ console.log("\n9. the reproducibility promise");
       JSON.stringify(junk.terms?.quirks));
     ok("a link drops a place that is not in the gazetteer", junk.terms?.near === undefined);
     ok("a link drops a term format that does not exist", junk.terms?.format === undefined);
+    const kinds = decodeApp("#tp=flight-adsb.not-a-data-type.maritime-ais");
+    ok("a link drops data types that do not exist",
+      JSON.stringify(kinds.terms?.profiles) === JSON.stringify(["flight-adsb", "maritime-ais"]),
+      JSON.stringify(kinds.terms?.profiles));
   }
 
   // Numbers reach file content — a package README, the written context — so the
@@ -1456,6 +1462,61 @@ console.log("\n10. search terms");
 
     const synonyms = set.terms.filter((t) => t.expect.subjects.some((s) => s.typed !== s.canonical));
     ok("some term uses the user's word rather than the schema's", synonyms.length > 0);
+
+    // Naming the kinds you ship means combining those and nothing else — the
+    // point of the option is that you decide, not the catalogue.
+    {
+      const asked = ["mobile-location-pings", "flight-adsb", "maritime-ais"];
+      const chosen = generateTerms(
+        termOpts({ count: 40, profiles: asked, quirks: ["many-subjects"], intensity: 0 }),
+      );
+      const named = chosen.terms.flatMap((t) => t.expect.subjects.map((s) => s.dataType));
+      ok("every kind in the query is one that was asked for",
+        named.every((id) => asked.includes(id)),
+        [...new Set(named.filter((id) => !asked.includes(id)))].join(","));
+      ok("asking for several kinds combines them",
+        chosen.terms.every((t) => t.expect.subjects.length > 1),
+        `${chosen.terms.filter((t) => t.expect.subjects.length < 2).length} name only one`);
+      ok("every kind asked for turns up somewhere", asked.every((id) => named.includes(id)));
+
+      // Spread across the kinds even without the quirk, so a set about three
+      // feeds is about all three rather than about the first one.
+      const spread = generateTerms(termOpts({ count: 60, profiles: asked, clean: true }));
+      const seen = new Set(spread.terms.flatMap((t) => t.expect.subjects.map((s) => s.dataType)));
+      ok("a clean set spreads across every kind asked for", seen.size === asked.length,
+        [...seen].join(","));
+
+      // And naming one kind has to leave the stream exactly as it was, or every
+      // seed shared before this option existed reproduces something else.
+      const before = generateTerms(termOpts({ count: 46, seed: "stream-check" }));
+      const after = generateTerms(termOpts({ count: 46, seed: "stream-check", profiles: ["mobile-location-pings"] }));
+      ok("naming the one kind you already had changes nothing",
+        JSON.stringify(before.terms) === JSON.stringify(after.terms));
+    }
+
+    // A template and a subject phrase can each supply the same quantifier, and
+    // "list all all devices" reads as a generator bug because it is one. The
+    // expectation check cannot see it — the noun really is in the text — so it
+    // is worth its own pass over everything the templates can produce.
+    {
+      let doubled = 0;
+      let example = "";
+      for (let s = 0; s < 25; s++) {
+        for (const clean of [true, false]) {
+          for (const t of generateTerms(termOpts({ seed: `words-${s}`, count: 60, clean, intensity: 0.4 })).terms) {
+            // Only on the plain sentence: a quirk that repeats a word on purpose
+            // — the overlong one — is doing exactly what it says.
+            if (t.quirks.length && !t.quirks.every((q) => q === "many-subjects" || q === "subject-synonym")) continue;
+            const match = /\b(\w+) \1\b/i.exec(t.text);
+            if (match) {
+              doubled++;
+              example ||= `${t.text} (${t.quirks.join(",") || "clean"})`;
+            }
+          }
+        }
+      }
+      ok("no term repeats a word by accident", doubled === 0, `${doubled}, e.g. ${example}`);
+    }
 
     const any = set.terms.filter((t) => t.expect.anySubject);
     ok("some term names no kind at all", any.length > 0);

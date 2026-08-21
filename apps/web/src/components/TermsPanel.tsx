@@ -185,10 +185,14 @@ function Row({ term }: { term: SearchTerm }) {
 export function TermsPanel({
   seed,
   profile,
+  profiles,
   terms,
 }: {
   seed: string;
+  /** The kind the headline noun comes from. */
   profile: string;
+  /** Every kind in play. More than one and terms are spread across them. */
+  profiles: string[];
   terms: TermsConfig;
 }) {
   const [saved, setSaved] = useState(false);
@@ -202,13 +206,14 @@ export function TermsPanel({
         seed,
         count: terms.count,
         profile,
+        profiles,
         quirks: terms.quirks,
         intensity: terms.intensity,
         near: terms.near,
         anchor: DEFAULT_ANCHOR,
         clean: terms.clean,
       }),
-    [seed, profile, terms],
+    [seed, profile, profiles, terms],
   );
 
   const report = useMemo(() => inspectTerms(set), [set]);
@@ -246,7 +251,10 @@ export function TermsPanel({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3.5">
         <div className="min-w-0">
           <CardTitle>
-            {set.terms.length.toLocaleString()} terms about {subject.plural}
+            {set.terms.length.toLocaleString()} terms about{" "}
+            {profiles.length > 1
+              ? `${profiles.length} kinds of thing`
+              : subject.plural}
           </CardTitle>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
             {terms.clean ? (

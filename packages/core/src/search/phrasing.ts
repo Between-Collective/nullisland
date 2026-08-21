@@ -185,7 +185,10 @@ const TEMPLATES: Record<Intent, Template[]> = {
   ],
   list: [
     (s) => join("list", s.subject, s.place, s.time),
-    (s) => join("list all", s.subject, s.place, s.time),
+    // `bare`, not `subject`: the possessive form can already begin with "all",
+    // and "list all all devices" is the kind of small wrongness that makes a
+    // fixture look machine-made.
+    (s) => join("list all", s.bare, s.place, s.time),
     (s) => join("export", s.subject, s.place, s.time),
     (s) => join("give me all", s.bare, s.place, s.time),
   ],

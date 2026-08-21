@@ -250,7 +250,19 @@ So `subjects` is always a list, and it carries what was typed alongside what you
 
 `typed` and `canonical` differ whenever somebody used their word instead of yours — planes for aircraft, boats for vessels, phones for devices, lorries for vehicles. That is its own quirk, and it is the one that quietly widens a query to everything: the place resolves, the kind does not, and the unmatched token has to go somewhere.
 
-Kinds are drawn from the ones people name in the same breath — things that move, things on the ground, things measured from orbit, things about people — so you get `aircraft and vessels` rather than `devices and census tracts`.
+Which kinds combine is something you say, not something the catalogue picks. Tick them in the sidebar — or name them on the command line — and every query spans exactly those:
+
+```bash
+nullisland --terms 40 --types mobile-location-pings,flight-adsb,maritime-ais --quirks many-subjects
+```
+
+```
+show aircraft, vessels and devices that are in Osaka last week
+how many vessels, aircraft and devices were in the Netherlands in the past 7 days
+did any devices, aircraft and vessels go in the United Kingdom on 9 March 2024
+```
+
+Left unspecified, kinds are drawn from the ones people name in the same breath — things that move, things on the ground, things measured from orbit, things about people — so you get `aircraft and vessels` rather than `devices and census tracts`.
 
 `resolvesTo` is null in exactly the two cases where no single answer is correct — the name belongs to nowhere, or to more than one somewhere — because a search that returns one result confidently is the failure this is here to catch, and an expectation that named a winner would contradict its own note.
 
@@ -289,7 +301,7 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,414 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,421 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 

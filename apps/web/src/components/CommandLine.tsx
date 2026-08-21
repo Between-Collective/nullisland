@@ -87,6 +87,18 @@ const COMMANDS: Command[] = [
       "npx nullisland --terms 46 --type mobile-location-pings --out fixtures/search",
   },
   {
+    title: "Queries across the feeds you ship",
+    blurb: (
+      <>
+        Name the kinds and every query spans exactly those — devices and aircraft and vessels in one
+        sentence. The answer is their union, which is the case where an empty result looks like a
+        correct one.
+      </>
+    ),
+    command:
+      "npx nullisland --terms 40 --types mobile-location-pings,flight-adsb,maritime-ais --quirks many-subjects",
+  },
+  {
     title: "Search terms pinned to one place",
     blurb: (
       <>
