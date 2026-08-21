@@ -14,9 +14,10 @@
     "build": "npm run build -w nullisland-core && npm run build -w nullisland && npm run build -w nullisland-web",
     "cli": "npm run build -w nullisland-core >/dev/null && tsx packages/cli/src/index.ts",
     "verify": "npm run verify -w nullisland-core",
-    "check": "npm run build -w nullisland-core && npm run build -w nullisland && npm run check -w nullisland-core && npm run check -w nullisland && npm run lint && npm run smoke -w nullisland && npm run check -w nullisland-web && tsc -p api/tsconfig.json --noEmit",
+    "check": "npm run build -w nullisland-core && npm run build -w nullisland && npm run check -w nullisland-core && npm run soak -w nullisland-core -- cobalt-juniper-aspen vale-onyx-breeze gale-glade-zenith fog-ember-vale && npm run check -w nullisland && npm run lint && npm run smoke -w nullisland && npm run check -w nullisland-web && tsc -p api/tsconfig.json --noEmit",
     "lint": "eslint packages",
-    "release": "npm run check && npm publish -w nullisland-core && npm publish -w nullisland"
+    "release": "npm run check && npm publish -w nullisland-core && npm publish -w nullisland",
+    "soak": "npm run soak -w nullisland-core"
   },
   "devDependencies": {
     "@types/node": "^20",

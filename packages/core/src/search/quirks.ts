@@ -53,6 +53,16 @@ export interface Quirk {
    */
   phase: QuirkPhase;
   /**
+   * What this quirk decides, when it decides something another quirk also
+   * decides.
+   *
+   * Two quirks that both choose which place the query is about cannot both be
+   * on one term: the second overwrites the first, and the term goes on
+   * reporting them both. At most one quirk per claim reaches a term, so what a
+   * term says was applied is what a term shows.
+   */
+  claims?: "place" | "window" | "voice" | "kinds" | "wrapper";
+  /**
    * An example, so the catalogue is readable without generating anything.
    * Not the output — the generator builds its own from the gazetteer.
    */
@@ -76,6 +86,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Cambridge, Newcastle, San Jose. A geocoder that returns the first hit is wrong roughly half the time, silently.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Cambridge",
   },
@@ -94,6 +105,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"the Estádio da Luz in Lisbon\" is one place, not two. Reading it as two returns every device in Lisbon.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Estádio da Luz in Lisbon",
   },
@@ -103,6 +115,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "München for Munich, Lisboa for Lisbon, 東京 for Tokyo. Same place, no shared substring with the English name.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in München",
   },
@@ -112,6 +125,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Sao Paulo, Zurich, Estadio da Luz. If the index is not folded, the typed name and the stored one are different strings.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Sao Paulo",
   },
@@ -121,6 +135,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "NYC, UAE, CDMX, LA. Two or three letters that also occur as column headers, status codes and ordinary words.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in NYC last week",
   },
@@ -130,6 +145,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Bombay, Constantinople, Turkey. Still in half the address data your users paste in, and gone from most gazetteers.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Bombay",
   },
@@ -139,6 +155,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Holland for the Netherlands, England for the UK. Matching the string exactly gives the user a fraction of what they asked for.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Holland",
   },
@@ -148,6 +165,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "LHR, HND, SFO. Three letters standing in for a place, and colliding with everything else three letters long.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices at LHR yesterday",
   },
@@ -157,6 +175,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Mobile, Nice, Split, Reading. A free-text place matcher finds them in sentences that are not about geography at all.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "show me mobile devices in Mobile",
   },
@@ -166,6 +185,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Near here\", \"around me\", \"nearby\". Resolves to nowhere on its own: the answer needs the caller's position, and a search that quietly picks a default centres the map on somewhere nobody asked about.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "cases and mobile devices near here",
   },
@@ -175,6 +195,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "A plausible-looking name that resolves to nothing. The right answer is zero rows and a reason, not zero rows and silence.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Port Halloran",
   },
@@ -184,6 +205,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Kyoto in China\", \"Manchester, France\". The two halves contradict each other and one of them has to win.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in Kyoto, China",
   },
@@ -193,6 +215,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"51.5072, -0.1276\" with no radius and no stated order. Read the pair backwards and you are in the Indian Ocean.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices near 51.5072, -0.1276",
   },
@@ -202,6 +225,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Devices in New Zealand\" — a bbox that crosses the antimeridian, or one that quietly drops the outlying islands.",
     category: "place",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in new zealand",
   },
@@ -213,6 +237,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Last week\" is the previous calendar week or a rolling seven days. Both are defensible; they share neither endpoint.",
     category: "time",
     needs: "none",
+    claims: "window",
     phase: "plan",
     example: "devices in Lisbon last week",
   },
@@ -222,6 +247,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "03/04/2024 is April the 3rd or March the 4th. Both components are under 13, so nothing in the string settles it.",
     category: "time",
     needs: "none",
+    claims: "window",
     phase: "plan",
     example: "devices in Berlin on 03/04/2024",
   },
@@ -231,6 +257,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Next week\" for historic positions. The answer is zero — but zero because the question is unanswerable, not because the area is empty.",
     category: "time",
     needs: "none",
+    claims: "window",
     phase: "plan",
     example: "devices in Tokyo next week",
   },
@@ -240,6 +267,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Between March and February\". Swapping the endpoints to be helpful answers a question nobody asked.",
     category: "time",
     needs: "none",
+    claims: "window",
     phase: "plan",
     example: "devices in Paris between March and February",
   },
@@ -249,6 +277,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Recently\", \"a while back\". Whatever default you apply is invented, and the response should say so.",
     category: "time",
     needs: "none",
+    claims: "window",
     phase: "plan",
     example: "devices in Dubai recently",
   },
@@ -296,6 +325,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Devices and aircraft in Tokyo\" asks for both, not for things that are both. Read as a conjunction over one collection it returns nothing, confidently.",
     category: "phrasing",
     needs: "none",
+    claims: "kinds",
     phase: "plan",
     example: "show me devices and aircraft in Tokyo last week",
   },
@@ -305,6 +335,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Planes, jets, aviation — nobody types \"aircraft\". The place resolves, the thing does not, and the unmatched token either widens the query to everything or narrows it to nothing.",
     category: "phrasing",
     needs: "none",
+    claims: "kinds",
     phase: "plan",
     example: "where are the planes over Lisbon",
   },
@@ -314,6 +345,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Everything in Tokyo.\" The answer is every layer, or a question back — not a silent default to whichever one happens to be first.",
     category: "phrasing",
     needs: "none",
+    claims: "kinds",
     phase: "plan",
     example: "show me everything in Tokyo last week",
   },
@@ -323,6 +355,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"devices tokyo last week\" — no preposition to hang the place on. Anything relying on \"in\" to find it finds nothing.",
     category: "phrasing",
     needs: "none",
+    claims: "voice",
     phase: "plan",
     example: "devices tokyo last week",
   },
@@ -332,6 +365,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Where were my devices on Tuesday?\" The interrogative moves the place to the end and adds a token that is not a filter.",
     category: "phrasing",
     needs: "none",
+    claims: "voice",
     phase: "plan",
     example: "where were my devices in Lisbon last week?",
   },
@@ -341,6 +375,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"Hey, can you please show me…\". Words that carry no filter, and one of them is \"can\", which is also a place in France.",
     category: "phrasing",
     needs: "none",
+    claims: "wrapper",
     phase: "text",
     example: "hey can you please show me devices in Tokyo",
   },
@@ -368,6 +403,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "\"dispositivos en Madrid\". The place is findable and the intent is not, unless something detected the language first.",
     category: "phrasing",
     needs: "none",
+    claims: "voice",
     phase: "plan",
     example: "dispositivos en Madrid la semana pasada",
   },
@@ -377,6 +413,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "Three sentences of context around one filter. Everything before the last clause is noise that still gets indexed.",
     category: "phrasing",
     needs: "none",
+    claims: "wrapper",
     phase: "text",
     example: "so I was looking at the dashboard earlier and it seemed off, anyway can you show me the devices that were in Tokyo last week",
   },
@@ -433,6 +470,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "São Paulo arriving as SÃ£o Paulo. The place is still in there, one decode away, and no matcher will find it.",
     category: "encoding",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices in SÃ£o Paulo",
   },
@@ -453,6 +491,7 @@ export const QUIRKS: Quirk[] = [
     blurb: "O'Connell Street, N'Djamena, Coeur d'Alene. Legitimate names that end a string literal early in anything concatenating SQL.",
     category: "adversarial",
     needs: "place",
+    claims: "place",
     phase: "plan",
     example: "devices near O'Connell Street",
   },
@@ -519,6 +558,15 @@ export const QUIRK_CATEGORY_ORDER: QuirkCategory[] = [
  * term says what it dropped.
  */
 export const EXCLUSIVE_QUIRKS = ["no-place", "empty"];
+
+/** Every quirk that decides the same thing, keyed by what it decides. */
+export const CLAIMED_BY: Record<string, string[]> = QUIRKS.reduce<Record<string, string[]>>(
+  (acc, q) => {
+    if (q.claims) acc[q.claims] = [...(acc[q.claims] ?? []), q.id];
+    return acc;
+  },
+  {},
+);
 
 const BY_ID = new Map(QUIRKS.map((q) => [q.id, q]));
 

@@ -308,6 +308,17 @@ Five containers: `jsonl` (one term per line, what a test suite reads), `json`, `
 
 Everything here goes through the same checks the files do, in both directions. On a control set they establish that nothing is wrong. On any set at all they establish the thing that has to hold whatever the quirks are: that the query text really contains the place and the window the expectation names. A term that describes a string it does not contain would fail every implementation there will ever be, so a failure is reported as a bug in Null Island rather than in your search.
 
+### Soaking a corpus
+
+`verify.ts` asserts the properties the generator is supposed to have. A soak asks a blunter question of a whole corpus at once — is every one of these forty-three terms something a person could have typed, and does each one describe itself honestly — because at 100% intensity quirks stack, and stacked quirks interact in ways no single-quirk assertion sees.
+
+```bash
+npm run soak                       # five fresh seeds
+npm run soak -- <seed> <seed> …    # those seeds, for a regression
+```
+
+The loop it exists for: generate at full intensity, read the failures, fix the generator, re-run every seed that has ever failed, then five fresh ones. It found nine real bugs the assertion suite did not, and the sharpest of them was structural — a quirk that decides which place the query is about, applied on top of another quirk that had already decided, left the term reporting both and demonstrating one. **Twenty-five of forty-three terms** were overclaiming that way. Quirks now declare what they *decide* — the place, the window, the voice, the kinds, the wrapper — and at most one claimant reaches a term, so what a term says was applied is what a term shows.
+
 ## Handling what comes out
 
 The files are hostile on purpose, and a couple of them are hostile to *you*, not just to your parser.
@@ -335,7 +346,7 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,450 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces and the endpoint, `packages/core/scripts/verify.ts` (2,450 assertions) the CLI smoke test (119 assertions), and a four-seed corpus soak. It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 

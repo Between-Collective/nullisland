@@ -38,6 +38,8 @@ export interface CatalogueDataType {
    * are what arrives in a search box, and none of them is the schema's word.
    */
   aliases: string[];
+  /** Words for it with no plural — real, and unusable after a quantifier. */
+  massAliases: string[];
   columns: string[];
   typicalProblems: string[];
 }
@@ -111,6 +113,7 @@ export function buildCatalogue(): Catalogue {
         singular: subject.singular,
         plural: subject.plural,
         aliases: [...(subject.aliases ?? [])],
+        massAliases: [...(subject.massAliases ?? [])],
         // The generic export builds its properties outright rather than from a
         // field list, so its columns are read off one sample — an empty array
         // would read as "no attributes", which is not true of it.

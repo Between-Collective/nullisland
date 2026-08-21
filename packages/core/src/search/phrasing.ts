@@ -47,6 +47,15 @@ export interface Subject {
    * synonym: "mobility" is a category, not a thing anyone searches for.
    */
   aliases?: readonly string[];
+  /**
+   * The words for it that have no plural — aviation, shipping, weather, the
+   * fleet.
+   *
+   * Real, and used constantly, but they cannot follow a quantifier: "how many
+   * aviation were in Lisbon" is not a sentence. Kept apart from `aliases` so
+   * the phrasing can reach for them only where they work.
+   */
+  massAliases?: readonly string[];
 }
 
 /**
@@ -56,25 +65,25 @@ export interface Subject {
  */
 export const SUBJECTS: Record<string, Subject> = {
   generic: { singular: "record", plural: "records", owned: false, aliases: ["rows", "entries", "features"] },
-  "flight-adsb": { singular: "aircraft", plural: "aircraft", owned: false, aliases: ["planes", "flights", "jets", "aviation", "air traffic"] },
-  "maritime-ais": { singular: "vessel", plural: "vessels", owned: false, aliases: ["ships", "boats", "shipping", "marine traffic"] },
-  "fleet-telematics": { singular: "vehicle", plural: "vehicles", owned: true, aliases: ["trucks", "vans", "lorries", "the fleet", "fleet vehicles"] },
-  "transit-gtfs": { singular: "bus", plural: "buses", owned: false, aliases: ["transit", "services", "public transport"] },
-  "micromobility-mds": { singular: "scooter", plural: "scooters", owned: true, aliases: ["e-scooters", "bikes", "micromobility"] },
-  "mobile-location-pings": { singular: "device", plural: "devices", owned: true, aliases: ["phones", "handsets", "mobiles", "mobile devices", "mobile"] },
-  "geosocial-checkins": { singular: "check-in", plural: "check-ins", owned: false, aliases: ["checkins", "posts", "social data"] },
+  "flight-adsb": { singular: "aircraft", plural: "aircraft", owned: false, aliases: ["planes", "flights", "jets"], massAliases: ["aviation", "air traffic"] },
+  "maritime-ais": { singular: "vessel", plural: "vessels", owned: false, aliases: ["ships", "boats"], massAliases: ["shipping", "marine traffic"] },
+  "fleet-telematics": { singular: "vehicle", plural: "vehicles", owned: true, aliases: ["trucks", "vans", "lorries", "fleet vehicles"], massAliases: ["the fleet"] },
+  "transit-gtfs": { singular: "bus", plural: "buses", owned: false, aliases: ["services"], massAliases: ["transit", "public transport"] },
+  "micromobility-mds": { singular: "scooter", plural: "scooters", owned: true, aliases: ["e-scooters", "bikes"], massAliases: ["micromobility"] },
+  "mobile-location-pings": { singular: "device", plural: "devices", owned: true, aliases: ["phones", "handsets", "mobiles", "mobile devices"], massAliases: ["mobile"] },
+  "geosocial-checkins": { singular: "check-in", plural: "check-ins", owned: false, aliases: ["checkins", "posts"], massAliases: ["social data"] },
   "poi-venues": { singular: "venue", plural: "venues", owned: false, aliases: ["places", "POIs", "locations"] },
   "trade-area-catchment": { singular: "catchment", plural: "catchments", owned: true, aliases: ["trade areas", "drive times"] },
-  "psychographics-spending": { singular: "household", plural: "households", owned: false, aliases: ["segments", "spend data"] },
+  "psychographics-spending": { singular: "household", plural: "households", owned: false, aliases: ["segments"], massAliases: ["spend data"] },
   "cadastral-parcels": { singular: "parcel", plural: "parcels", owned: false, aliases: ["lots", "plots", "titles", "land parcels"] },
   "building-footprints": { singular: "building", plural: "buildings", owned: false, aliases: ["footprints", "structures"] },
-  "zoning-land-use": { singular: "zone", plural: "zones", owned: false, aliases: ["districts", "land use"] },
+  "zoning-land-use": { singular: "zone", plural: "zones", owned: false, aliases: ["districts"], massAliases: ["land use"] },
   "indoor-bim": { singular: "room", plural: "rooms", owned: false, aliases: ["spaces", "floors", "indoor assets"] },
-  "utility-networks": { singular: "asset", plural: "assets", owned: true, aliases: ["mains", "pipes", "the network"] },
-  "satellite-scene-footprints": { singular: "scene", plural: "scenes", owned: false, aliases: ["scenes", "imagery", "captures"] },
-  "elevation-contours": { singular: "contour", plural: "contours", owned: false, aliases: ["isolines", "elevation"] },
-  "weather-observations": { singular: "station", plural: "stations", owned: false, aliases: ["sensors", "gauges", "weather"] },
-  "land-cover-ndvi": { singular: "tile", plural: "tiles", owned: false, aliases: ["rasters", "land cover"] },
+  "utility-networks": { singular: "asset", plural: "assets", owned: true, aliases: ["mains", "pipes"], massAliases: ["the network"] },
+  "satellite-scene-footprints": { singular: "scene", plural: "scenes", owned: false, aliases: ["scenes", "captures"], massAliases: ["imagery"] },
+  "elevation-contours": { singular: "contour", plural: "contours", owned: false, aliases: ["isolines"], massAliases: ["elevation"] },
+  "weather-observations": { singular: "station", plural: "stations", owned: false, aliases: ["sensors", "gauges"], massAliases: ["weather"] },
+  "land-cover-ndvi": { singular: "tile", plural: "tiles", owned: false, aliases: ["rasters"], massAliases: ["land cover"] },
   "natural-hazard-zones": { singular: "hazard zone", plural: "hazard zones", owned: false, aliases: ["flood zones", "hazard areas"] },
   "census-boundary": { singular: "tract", plural: "tracts", owned: false, aliases: ["census tracts", "block groups"] },
   "crime-incident": { singular: "incident", plural: "incidents", owned: false, aliases: ["crimes", "reports", "offences"] },
@@ -239,6 +248,22 @@ export function wantsTime(intent: Intent): boolean {
   return intent === "history" || intent === "count" || intent === "presence";
 }
 
+/**
+ * Adds a trailing clause without stepping on the punctuation already there.
+ *
+ * "…which has more?" plus ", no rush" gave "?, no rush", which no one has ever
+ * typed. The mark belongs at the end of the sentence, so it is lifted off,
+ * the clause goes on, and it goes back.
+ */
+export function append(text: string, clause: string): string {
+  // Only ? and !. A full stop at the end of a query is as likely to belong to
+  // an abbreviation as to the sentence — "devices in México D.F." — and lifting
+  // it off renames the place.
+  const mark = /[?!]$/.exec(text)?.[0] ?? "";
+  const body = mark ? text.slice(0, -1) : text;
+  return `${body}, ${clause}${mark}`;
+}
+
 /** Words that carry no filter and are typed anyway. */
 export const FILLERS = [
   "hey",
@@ -249,14 +274,40 @@ export const FILLERS = [
   "hey quick question",
 ];
 
-export const POLITE = [
+/**
+ * Politeness, in two shapes.
+ *
+ * A query either starts with a verb — "show me devices in Tokyo" — or with the
+ * thing itself — "devices in Tokyo". The polite phrase in front of it has to
+ * agree: "can you please" wants a verb after it and "would you mind showing me"
+ * wants a noun, and getting it backwards gives "would you mind showing me show
+ * me devices" or "I need you to devices", both of which read as a generator
+ * with no ear.
+ */
+export const POLITE_BEFORE_VERB = [
   "can you please",
   "could you",
   "please",
   "I need you to",
+  "would you",
+];
+
+export const POLITE_BEFORE_NOUN = [
   "would you mind showing me",
   "I'd like to see",
+  "can you show me",
+  "I'm after",
+  "could I get",
 ];
+
+/** The verbs the templates open with, and the quantifiers that behave like them. */
+const OPENS_WITH_VERB =
+  /^(show|list|find|export|count|give|break|compare|which|how many|number of|were|did|is|what|where)\b/i;
+
+/** The right politeness for this sentence, whichever shape it turned out to be. */
+export function polite(text: string, rng: Rng): string {
+  return rng.pick(OPENS_WITH_VERB.test(text) ? POLITE_BEFORE_VERB : POLITE_BEFORE_NOUN);
+}
 
 /** Sentences of context wrapped round one filter. */
 export const PREAMBLE = [
@@ -283,6 +334,8 @@ export const OTHER_LANGUAGES: Array<{
   render: (subject: string, place: string, time: string) => string;
   subjects: Record<string, string>;
   times: Record<string, string>;
+  /** What "everything" is, for a query naming no kind of thing. */
+  any: string;
 }> = [
   {
     code: "es",
@@ -290,6 +343,7 @@ export const OTHER_LANGUAGES: Array<{
     render: (subject, place, time) => join("muéstrame los", subject, "en", place, time),
     subjects: { device: "dispositivos", vehicle: "vehículos", vessel: "buques", parcel: "parcelas" },
     times: { "last week": "la semana pasada", yesterday: "ayer", today: "hoy" },
+    any: "todo",
   },
   {
     code: "fr",
@@ -297,6 +351,7 @@ export const OTHER_LANGUAGES: Array<{
     render: (subject, place, time) => join("montre-moi les", subject, "à", place, time),
     subjects: { device: "appareils", vehicle: "véhicules", vessel: "navires", parcel: "parcelles" },
     times: { "last week": "la semaine dernière", yesterday: "hier", today: "aujourd'hui" },
+    any: "tout",
   },
   {
     code: "de",
@@ -304,6 +359,7 @@ export const OTHER_LANGUAGES: Array<{
     render: (subject, place, time) => join("zeig mir die", subject, "in", place, time),
     subjects: { device: "Geräte", vehicle: "Fahrzeuge", vessel: "Schiffe", parcel: "Grundstücke" },
     times: { "last week": "letzte Woche", yesterday: "gestern", today: "heute" },
+    any: "alles",
   },
   {
     code: "pt",
@@ -311,6 +367,7 @@ export const OTHER_LANGUAGES: Array<{
     render: (subject, place, time) => join("mostra-me os", subject, "em", place, time),
     subjects: { device: "dispositivos", vehicle: "veículos", vessel: "navios", parcel: "parcelas" },
     times: { "last week": "na semana passada", yesterday: "ontem", today: "hoje" },
+    any: "tudo",
   },
   {
     code: "ja",
@@ -320,6 +377,7 @@ export const OTHER_LANGUAGES: Array<{
     render: (subject, place, time) => `${time}${place}にあった${subject}を見せて`,
     subjects: { device: "デバイス", vehicle: "車両", vessel: "船舶", parcel: "区画" },
     times: { "last week": "先週", yesterday: "昨日", today: "今日" },
+    any: "すべて",
   },
 ];
 

@@ -40,7 +40,8 @@
     "prepublishOnly": "npm run build",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "verify": "tsx scripts/verify.ts",
-    "check": "tsc -p tsconfig.json --noEmit && npm run verify"
+    "check": "tsc -p tsconfig.json --noEmit && npm run verify",
+    "soak": "tsx scripts/soak.ts"
   },
   "devDependencies": {
     "@types/node": "^20",

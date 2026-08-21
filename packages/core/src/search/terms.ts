@@ -13,12 +13,13 @@ import {
 } from "./places";
 import {
   ANY_SUBJECT,
+  append,
   FILLERS,
   getSubject,
   joinNouns,
   INTENTS,
   OTHER_LANGUAGES,
-  POLITE,
+  polite,
   POSTAMBLE,
   PREAMBLE,
   render,
@@ -478,6 +479,12 @@ function fold(name: string): string {
 function swapTo(slot: PlanPlace, place: Place): void {
   slot.place = place;
   slot.typed = place.name;
+  // Everything the old place brought with it goes too. A qualifier left behind
+  // reads as "Australia in Barcelona" — a container the new place is not in,
+  // and a sentence nobody typed.
+  slot.qualifier = null;
+  slot.wrongQualifier = null;
+  slot.deictic = false;
   slot.candidates = [
     place,
     ...(place.ambiguousWith ?? []).map(getPlace).filter((p): p is Place => !!p),
@@ -790,24 +797,17 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     return plan.time.note ?? null;
   },
 
-  "local-midnight": (plan, rng, opts) => {
+  "local-midnight": (plan) => {
     // Rough offset from longitude. Real zones are political, which is the point:
     // whatever number you use, somebody's border makes it wrong.
     const zone = (p: Place) => Math.round(p.lon / 15);
-    const slot = plan.places.find((s) => s.place && zone(s.place) !== 0) ?? plan.places[0];
-    if (!slot || !plan.time.startsAt) return null;
-    // Somewhere on the Greenwich meridian has no offset to disagree about, so
-    // the quirk moves the query rather than reporting a difference of zero
-    // hours as though it were one.
-    if (!slot.place || zone(slot.place) === 0) {
-      const pick = preferNear(rng, opts, PLACES.filter((p) => Math.abs(zone(p)) >= 3));
-      if (!pick) return null;
-      swapTo(slot, pick);
-    }
+    const slot = plan.places.find((s) => s.place && zone(s.place) !== 0);
+    // Somewhere on the Greenwich meridian has no offset to disagree about. This
+    // quirk is about the window rather than about where, so it steps aside
+    // rather than moving a query another quirk has already placed.
+    if (!slot?.place || !plan.time.startsAt) return null;
     const place = slot.place;
-    if (!place) return null;
     const offset = zone(place);
-    if (offset === 0) return null;
     const local = shiftToLocal(plan.time, offset);
     const note =
       `"${plan.time.expression}" for something in ${place.name} means ${place.name}'s day, not the ` +
@@ -900,10 +900,20 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
 
   "subject-synonym": (plan, rng) => {
     // A kind whose schema word is not the word anyone types.
-    const options = plan.subjects.filter((s) => getSubject(s.profile).aliases?.length);
+    const options = plan.subjects.filter(
+      (s) => getSubject(s.profile).aliases?.length || getSubject(s.profile).massAliases?.length,
+    );
     const slot = options.length ? rng.pick(options) : null;
     if (!slot) return null;
-    const aliases = getSubject(slot.profile).aliases as readonly string[];
+    const subject = getSubject(slot.profile);
+    // "How many aviation were in Lisbon" is not a sentence, so the words with
+    // no plural are only in play where nothing is being counted.
+    const counted = plan.intent === "count" || plan.intent === "presence";
+    const aliases = [
+      ...(subject.aliases ?? []),
+      ...(counted ? [] : (subject.massAliases ?? [])),
+    ];
+    if (!aliases.length) return null;
     const alias = rng.pick(aliases);
     if (alias === slot.typed) return null;
     const before = slot.canonical;
@@ -988,20 +998,27 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     return "An empty query. The right response is a prompt — not a full table scan, and not a stack trace from something that assumed at least one token.";
   },
 
-  nbsp: (plan, rng, opts) => {
+  nbsp: (plan, rng) => {
     // It has to land inside a name to be worth anything: a U+00A0 between two
     // ordinary words is a curiosity, and one inside "New York" is a lookup that
-    // fails against a string nobody can see the difference in.
-    let slot = plan.places.find((s) => s.typed.includes(" "));
-    if (!slot) {
-      const pick = preferNear(rng, opts, PLACES.filter((p) => p.name.includes(" ")));
-      if (!pick || !plan.places.length) return null;
-      slot = plan.places[0];
-      swapTo(slot, pick);
+    // fails against a string nobody can see the difference in. It never swaps
+    // the place out — another quirk has usually chosen it, and replacing it
+    // would leave that one reported and not shown.
+    const slot = plan.places.find((s) => s.typed.includes(" "));
+    if (slot) {
+      const before = slot.typed;
+      slot.typed = before.replace(/ /g, NBSP);
+      return `The spaces in "${before}" are U+00A0. Identical on screen, not matched by every flavour of \\s, and not removed by a trim that only knows about U+0020.`;
     }
-    const before = slot.typed;
-    slot.typed = before.replace(/ /g, NBSP);
-    return `The spaces in "${before}" are U+00A0. Identical on screen, not matched by every flavour of \\s, and not removed by a trim that only knows about U+0020.`;
+    // Failing that, the window: "last month" carries a space too, and a query
+    // whose date range will not match is the same bug wearing another hat.
+    if (plan.time.expression.includes(" ")) {
+      const before = plan.time.expression;
+      plan.time = { ...plan.time, expression: before.replace(/ /g, NBSP) };
+      return `The spaces in "${before}" are U+00A0. Identical on screen, and not what a date parser is splitting on.`;
+    }
+    rng.next();
+    return null;
   },
 
   "zero-width": (plan, rng) => {
@@ -1072,15 +1089,24 @@ function typedName(plan: Plan): string | null {
 }
 
 const TEXT_QUIRKS: Record<string, TextQuirk> = {
-  filler: (text, rng) => ({
-    text: `${rng.pick(FILLERS)} ${rng.pick(POLITE)} ${text}, ${rng.pick(POSTAMBLE)}`,
+  filler: (text, rng, plan) => {
+    // English politeness in front of a translated sentence doubles the verb —
+    // "would you mind showing me mostra-me os dispositivos". Code-switching is
+    // a real thing and it is not this quirk, so this one steps aside.
+    if (plan.language) return null;
+    return {
+    text: append(`${rng.pick(FILLERS)} ${polite(text, rng)} ${text}`, rng.pick(POSTAMBLE)),
     note: "Politeness and preamble around the filter. None of it narrows anything, and one of those words is also a place.",
-  }),
+    };
+  },
 
-  rambling: (text, rng) => ({
-    text: `${rng.pick(PREAMBLE)}, anyway ${text}. ${rng.pick(POSTAMBLE)}`,
-    note: "A paragraph with one filter in it. Everything outside the last clause is context, and all of it still gets indexed.",
-  }),
+  rambling: (text, rng, plan) => {
+    if (plan.language) return null;
+    return {
+      text: append(`${rng.pick(PREAMBLE)}, anyway ${text}`, rng.pick(POSTAMBLE)),
+      note: "A paragraph with one filter in it. Everything outside the last clause is context, and all of it still gets indexed.",
+    };
+  },
 
   casing: (text, rng) => {
     const how = rng.int(0, 2);
@@ -1229,7 +1255,9 @@ function renderText(plan: Plan, rng: Rng): string {
 
   if (plan.language) {
     const lang = plan.language;
-    const noun = plan.subjects[0]?.typed ?? "records";
+    // No kind named is a thing this language has to be able to say too, or the
+    // sentence quietly reintroduces one the expectation has ruled out.
+    const noun = plan.anySubject ? lang.any : (plan.subjects[0]?.typed ?? lang.any);
     // Already translated, by the quirk that chose the language — translating it
     // again here would look the phrase up by a key it no longer has and quietly
     // drop the window the expectation still names.
@@ -1372,14 +1400,27 @@ function assign(rng: Rng, index: number, opts: TermsOptions, order: Quirk[]): st
   // demonstrating one is the tool lying about its own output.
   if (EXCLUSIVE_QUIRKS.includes(lead.id)) return [lead.id];
   const chosen = new Set<string>([lead.id, ...shuffled]);
+  // What the term has already decided. A second quirk deciding the same thing
+  // overwrites the first, and the term would go on reporting both.
+  const claimed = new Set(
+    [...chosen].map((id) => getQuirk(id)?.claims).filter(Boolean) as string[],
+  );
   const extras = Math.floor(opts.intensity * 3);
   for (let i = 0; i < extras; i++) {
     if (!rng.bool(opts.intensity)) continue;
-    // Extras never include the two that empty the query out: a term reporting
-    // three quirks and demonstrating one would be the tool lying about itself.
-    const pool = order.filter((q) => !EXCLUSIVE_QUIRKS.includes(q.id) && !chosen.has(q.id));
+    // Extras never include the two that empty the query out, and never a second
+    // quirk deciding something already decided: a term reporting three quirks
+    // and demonstrating one would be the tool lying about itself.
+    const pool = order.filter(
+      (q) =>
+        !EXCLUSIVE_QUIRKS.includes(q.id) &&
+        !chosen.has(q.id) &&
+        !(q.claims && claimed.has(q.claims)),
+    );
     if (!pool.length) break;
-    chosen.add(rng.pick(pool).id);
+    const pick = rng.pick(pool);
+    chosen.add(pick.id);
+    if (pick.claims) claimed.add(pick.claims);
   }
   return [...chosen];
 }

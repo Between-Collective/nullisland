@@ -23,7 +23,8 @@ Core is the only place that knows how to build a file. The CLI and the web app b
 
 ```bash
 npm run check      # typecheck + verify + lint + smoke + web check. Run this before saying done
-npm run verify -w nullisland-core   # the generator's own test suite (~2,200 assertions)
+npm run verify -w nullisland-core   # the generator's own test suite (~2,450 assertions)
+npm run soak                        # five fresh corpora at 100% intensity, read for anything wrong
 npm run cli -- --help               # the CLI, run from source
 npm run dev        # the web app
 npm run build      # core, cli and a static web export
@@ -84,6 +85,10 @@ With no quirks selected the catalogue is dealt out one per term, so a set of 46 
 A term can name several kinds of thing, or none: `expect.subjects` is always a list of `{typed, canonical, dataType}` and `expect.anySubject` covers "everything in Tokyo". Several kinds means a **union** — nothing is both a device and an aircraft — and `typed` differs from `canonical` whenever somebody used their word rather than the schema's. Every template in `phrasing.ts` must render the subject slot; one that does not makes every term claim a noun its own text lacks, which is what `inspectTerms` will fail on.
 
 Adding a quirk is a catalogue entry plus one transform, and `verify.ts` will fail the build if the entry exists with nothing behind it.
+
+A quirk that **decides** something another quirk also decides must say so with `claims` — `place`, `window`, `voice`, `kinds` or `wrapper`. Two claimants on one term means the second overwrote the first while the term went on reporting both, which is the overclaiming bug in its purest form; `assign()` lets at most one through. If a transform calls `swapTo`, it is deciding the place and it claims `place`.
+
+`npm run soak` is the other half of the suite: `verify.ts` asserts properties, the soak reads whole corpora at 100% intensity looking for sentences no one would type. Stacked quirks interact, and that is where the bugs are.
 
 ## What this codebase is strict about
 
