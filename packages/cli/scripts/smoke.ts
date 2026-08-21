@@ -10,10 +10,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildPackage,
+  DEFAULT_ANCHOR,
   encodeConfig,
   generate,
+  generateTerms,
   PROBLEMS,
   PROFILES,
+  QUIRKS,
+  writeTerms,
   type GenerateOptions,
 } from "nullisland-core";
 
@@ -326,6 +330,104 @@ try {
     const wanted = typeof first.file.data === "string" ? Buffer.from(first.file.data) : Buffer.from(first.file.data);
     ok("--extract fixtures match the library", onDisk.equals(wanted));
     rmSync(extracted, { recursive: true, force: true });
+  }
+
+  /* ── search terms ────────────────────────────────────────────────────── */
+  {
+    // The same rule as everywhere else in this tool: the CLI is a front for the
+    // library, so the bytes have to be the library's bytes.
+    const set = generateTerms({
+      seed: "harbor-lantern-drift",
+      count: 43,
+      profile: "mobile-location-pings",
+      quirks: [],
+      intensity: 0.15,
+      near: "anywhere",
+      anchor: DEFAULT_ANCHOR,
+    });
+    const expected = writeTerms(set, "jsonl", "harbor-lantern-drift");
+    const piped = run([
+      "--terms", "43",
+      "--type", "mobile-location-pings",
+      "--seed", "harbor-lantern-drift",
+      "--stdout",
+    ]);
+    ok("--terms --stdout exits cleanly", piped.status === 0, piped.stdout.slice(0, 200));
+    ok("--terms is byte-identical to the library", piped.stdout === expected.data,
+      `${piped.stdout.length} vs ${String(expected.data).length} bytes`);
+
+    const written = run([
+      "--terms", "20", "--seed", "term-smoke", "--json", "--out", work,
+    ]);
+    let summary: any = null;
+    try { summary = JSON.parse(written.stdout); } catch {}
+    ok("--terms --json exits cleanly", written.status === 0, written.stdout.slice(0, 200));
+    ok("--terms --json reports its checks", summary?.checks?.passed === true,
+      JSON.stringify(summary?.checks?.ran?.filter((c: any) => !c.ok)));
+    ok("--terms writes the file it names", !!summary?.file && existsSync(summary.file), String(summary?.file));
+    ok("--terms reports what was applied, not what was asked for",
+      Array.isArray(summary?.quirks) && summary.quirks.length > 0);
+    ok("--terms carries a fixed anchor", summary?.anchor === DEFAULT_ANCHOR, String(summary?.anchor));
+
+    // Every line of the JSONL has to stand alone, or a test reading it line by
+    // line gets a parse error rather than a hard query.
+    const lines = readFileSync(String(summary.file), "utf8").trim().split("\n");
+    ok("--terms writes one parseable line per term", lines.length === 20 &&
+      lines.every((line) => { try { return !!JSON.parse(line).query || JSON.parse(line).query === ""; } catch { return false; } }),
+      `${lines.length} lines`);
+
+    for (const format of ["json", "csv", "txt", "md"]) {
+      const out = run(["--terms", "6", "--seed", "fmt", "--term-format", format, "--stdout"]);
+      ok(`--term-format ${format} exits cleanly`, out.status === 0, out.stdout.slice(0, 120));
+      ok(`--term-format ${format} writes something`, out.stdout.length > 0);
+    }
+
+    // --clean is an assertion about the output, so anything contradicting it is
+    // an error rather than a silent winner.
+    const cleanTerms = run(["--terms", "12", "--clean", "--seed", "ctrl", "--json", "--out", work]);
+    let control: any = null;
+    try { control = JSON.parse(cleanTerms.stdout); } catch {}
+    ok("--terms --clean exits cleanly", cleanTerms.status === 0, cleanTerms.stdout.slice(0, 200));
+    ok("--terms --clean applies nothing", control?.clean === true && control?.quirks?.length === 0,
+      JSON.stringify(control?.quirks));
+    const contradiction = run(["--terms", "5", "--clean", "--quirks", "misspelled-place", "--out", work]);
+    ok("--terms --clean refuses --quirks", contradiction.status === 2, String(contradiction.status));
+
+    // An unknown id is always an error, never a silent default — a run that
+    // ignored a typo would hand back a control set you believed was awkward.
+    ok("--terms rejects an unknown quirk", run(["--terms", "4", "--quirks", "not-a-quirk"]).status === 2);
+    ok("--terms rejects an unknown place", run(["--terms", "4", "--near", "atlantis"]).status === 2);
+    ok("--terms rejects a bad anchor", run(["--terms", "4", "--anchor", "yesterday"]).status === 2);
+    // Options that describe a file have no meaning here, and saying so beats
+    // accepting them and ignoring them.
+    ok("--terms refuses --format", run(["--terms", "4", "--format", "csv"]).status === 2);
+    ok("--terms refuses --count", run(["--terms", "4", "--count", "50"]).status === 2);
+    ok("--terms refuses --boundary", run(["--terms", "4", "--boundary", "bbox"]).status === 2);
+
+    // Asking for one quirk gets that quirk and no other.
+    const single = run(["--terms", "6", "--quirks", "ambiguous-place", "--seed", "one", "--json", "--out", work]);
+    let onlyOne: any = null;
+    try { onlyOne = JSON.parse(single.stdout); } catch {}
+    ok("--quirks applies only what was asked for",
+      JSON.stringify(onlyOne?.quirks) === JSON.stringify(["ambiguous-place"]),
+      JSON.stringify(onlyOne?.quirks));
+
+    // The catalogue as data, so a script can choose without reading source.
+    const listed = run(["--list", "quirks", "--json"]);
+    let catalogue: any = null;
+    try { catalogue = JSON.parse(listed.stdout); } catch {}
+    ok("--list quirks --json parses", catalogue?.quirks?.length === QUIRKS.length,
+      String(catalogue?.quirks?.length));
+    ok("--list quirks --json spells out what each needs",
+      catalogue?.quirks?.every((q: any) => typeof q.needs === "string" && typeof q.example === "string"));
+    const places = run(["--list", "places", "--json"]);
+    let gazetteer: any = null;
+    try { gazetteer = JSON.parse(places.stdout); } catch {}
+    ok("--list places --json parses", Array.isArray(gazetteer?.places) && gazetteer.places.length > 0);
+    ok("--list places --json spells out ambiguity rather than omitting it",
+      gazetteer?.places?.every((p: any) => Array.isArray(p.ambiguousWith)));
+    ok("--list quirks prints prose too", run(["--list", "quirks"]).stdout.includes("Adversarial"));
+    ok("--list places prints prose too", run(["--list", "places"]).stdout.includes("Estádio da Luz"));
   }
 
   console.log(`\n${checks - failures}/${checks} cli checks passed`);

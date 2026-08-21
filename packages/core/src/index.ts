@@ -60,6 +60,52 @@ export type { BoundaryMeta, Extent } from "./boundary";
 export { DEFAULT_REGION, getRegion, REGIONS } from "./regions";
 export type { Region } from "./regions";
 
+/* ── the search box, rather than the map ─────────────────────────────────── */
+export { generateTerms, inspectTerms, MAX_TERMS, writeTerms, TERM_FORMATS, getTermFormat } from "./search/index";
+export {
+  EXCLUSIVE_QUIRKS,
+  getQuirk,
+  QUIRK_CATEGORY_LABELS,
+  QUIRK_CATEGORY_ORDER,
+  QUIRKS,
+  quirksInCategory,
+} from "./search/index";
+export {
+  aliasOfKind,
+  allNames,
+  containers,
+  DEFAULT_ANCHOR,
+  DEFAULT_SUBJECT_PROFILE,
+  getPlace,
+  getSubject,
+  INTENTS,
+  PLACES,
+  placesOfKind,
+  SUBJECTS,
+} from "./search/index";
+export type {
+  Alias,
+  AliasKind,
+  Intent,
+  Place,
+  PlaceExpectation,
+  PlaceKind,
+  Quirk,
+  QuirkCategory,
+  QuirkNeeds,
+  QuirkPhase,
+  SearchTerm,
+  Subject,
+  TermExpectation,
+  TermFile,
+  TermFormatId,
+  TermFormatMeta,
+  TermSet,
+  TermsOptions,
+  TimeKind,
+  TimeWindow,
+} from "./search/index";
+
 /* ── describing the result ───────────────────────────────────────────────── */
 export { buildContext, contextToText } from "./context";
 export type { ContextBlock } from "./context";

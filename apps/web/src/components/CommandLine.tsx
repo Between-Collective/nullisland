@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "./ui";
-import { PROFILES, REPO_URL } from "nullisland-core";
+import { PROFILES, QUIRKS, REPO_URL } from "nullisland-core";
 
 /**
  * The part the buttons above cannot do.
@@ -72,6 +72,32 @@ const COMMANDS: Command[] = [
       </>
     ),
     command: "npx nullisland --package 9 --clean --extract --out fixtures/clean",
+  },
+  {
+    title: `Search terms — ${QUIRKS.length} of them, one problem each`,
+    blurb: (
+      <>
+        The queries your users type, with the parse each one should receive. JSONL, one term per
+        line, so a test can read it straight off disk. Swap{" "}
+        <code className="text-white/70">--term-format md</code> for a report to hand a reviewer, or{" "}
+        <code className="text-white/70">--clean</code> for the control set.
+      </>
+    ),
+    command:
+      "npx nullisland --terms 43 --type mobile-location-pings --out fixtures/search",
+  },
+  {
+    title: "Search terms pinned to one place",
+    blurb: (
+      <>
+        Everything in and around a place from the gazetteer —{" "}
+        <code className="text-white/70">--list places</code> has the ids. A quirk needing a name
+        nowhere near it will still reach further, and the expected parse always names the place it
+        actually used.
+      </>
+    ),
+    command:
+      "npx nullisland --terms 40 --near tokyo --term-format jsonl --seed harbor-lantern-drift --stdout | jq -r '.query'",
   },
 ];
 
@@ -162,8 +188,9 @@ export function CommandLine() {
 
       <p className="mt-3 text-[11.5px] leading-relaxed text-white/45">
         <code className="text-white/70">npx nullisland --help</code> lists every option, and{" "}
-        <code className="text-white/70">--list types|formats|problems --json</code> hands the whole
-        catalogue back as data — every id, and the formats and data types each problem applies to —
+        <code className="text-white/70">--list types|formats|problems|quirks|places --json</code> hands
+        the whole catalogue back as data — every id, the formats and data types each problem applies
+        to, and for the gazetteer every alias and every other place that answers to the same name —
         so a script can choose without guessing at what will be skipped. Add{" "}
         <code className="text-white/70">--json</code> to any run to get the counts, the bounds and
         the checks instead of prose.

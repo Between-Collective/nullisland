@@ -9,6 +9,7 @@ import { OutputPanel } from "./OutputPanel";
 import { PackagePanel } from "./PackagePanel";
 import { ProblemGrid } from "./ProblemGrid";
 import { Sidebar } from "./Sidebar";
+import { TermsPanel } from "./TermsPanel";
 import { Button, Card } from "./ui";
 import {
   BOUNDARY_IDS,
@@ -443,6 +444,14 @@ export function Generator() {
             }
             onClear={() => patch({ problems: [] })}
           />
+        </div>
+
+        {/* After the problems, because the question it answers comes after
+            them: once the file loads, does the box above the map survive what
+            gets typed into it. Seeded from the same words as everything else,
+            so one seed reproduces the whole page. */}
+        <div className="mt-3">
+          <TermsPanel seed={opts.seed} profile={opts.profile} />
         </div>
 
         <HowToUse />

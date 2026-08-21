@@ -8,6 +8,8 @@ Null Island generates those files on purpose. Pick a format, pick a data type �
 
 It generates the other kind too. Pick no problems at all and you get a **clean** file — valid, well-formed, wearing the same real schema — because "does my map load good data" is the question worth settling before any of the rest.
 
+And it generates the other end of the same problem: the **search terms** somebody types above the map. *Devices in Tokyo and Kyoto.* *Devices in new zealand.* *Devices that were in the Estádio da Luz in Lisbon last week.* Each one arrives with the parse it is supposed to receive — the places resolved to real coordinates, the window resolved to instants — so you can assert on the answer instead of squinting at it.
+
 Everything runs in the browser. Nothing is uploaded, nothing is stored, and the whole thing builds to static files. There is a command line too — same generator, same bytes:
 
 ```bash
@@ -25,6 +27,7 @@ npx nullisland --type maritime-ais --format csv --typical --count 200
 5. **Take the file and its context.** Download or copy the fixture; the dark panel holds a written account of everything wrong with it, for an issue or an agent.
 6. **Make it reproducible.** Every file comes from its seed, so *Share* copies a link that rebuilds it byte for byte. Put the seed in your test suite instead of committing the file.
 7. **Or take a package** — 5, 9 or 18 fixtures in one zip, every format and a spread of data types, with a README and a manifest describing all of them.
+8. **Then test the box above the map.** The *search terms* panel deals out the query catalogue one problem apiece — a misspelled venue, a name that means two cities, a window that reads two ways — each with its expected parse. *Clean* gives the control set here too.
 
 A word of warning before you open anything in a spreadsheet: see [Handling what comes out](#handling-what-comes-out).
 
@@ -193,6 +196,53 @@ Switch the package to **Clean** and the sweep stays exactly the same — every c
 
 The whole package derives from one seed, so `nullisland-pack-9-sand-frost-ember.zip` is rebuilt byte for byte from `sand-frost-ember`, and each file inside it from `sand-frost-ember-3` and so on. Packages stay in the hundreds of features per file: breadth is the point, and breadth at 500 features finds the same bugs as breadth at 50,000.
 
+## Search terms
+
+A map has two inputs. The file is one. The other is the sentence in the search box, and it fails in a completely different set of ways — so the same idea is applied to it: a control case first, then one thing hard at a time, everything reproducible from a seed.
+
+```bash
+npx nullisland --terms 43 --type mobile-location-pings --out test/fixtures/search
+```
+
+The catalogue has **43 quirks** across five categories, and with none selected they are dealt out one per term — so a set of 43 is 43 different problems rather than 43 rolls of the same dice.
+
+- **Place** — a misspelled venue, a name that means two cities, an endonym, an abbreviation, a former name, a place that does not exist, a whole country whose real bounding box is not the one everybody draws.
+- **Time** — *last week* (the previous calendar week, or a rolling seven days?), `03/04/2024` (both readings are valid dates, weeks apart), *next week* for historic positions, a range with its ends the wrong way round.
+- **Phrasing** — no place at all, a negation, one area minus another, keywords with no preposition to hang the place on, a question, politeness, another language entirely.
+- **Encoding** — curly quotes out of a word processor, a non-breaking space inside *New York*, a zero-width space, a Cyrillic `о` in *Tokyo*, UTF-8 read as Latin-1.
+- **Adversarial** — an apostrophe in a name that has always had one, instructions aimed at the model behind the search, a newline in the middle, far more input than expected.
+
+The part that makes them fixtures rather than strings is what travels beside them:
+
+```jsonc
+{
+  "query": "devices that were in Dublin in the past 3 days",
+  "quirks": ["ambiguous-place"],
+  "expect": {
+    "ambiguous": true,
+    "places": [{
+      "typed": "Dublin",
+      "resolvesTo": null,           // two places answer to this name, so no single id is right
+      "candidates": [               // biggest first: the tie-break most stacks reach for
+        { "name": "Dublin", "country": "IE", "lat": 53.3498, "lon": -6.2603, "population": 592000 },
+        { "name": "Dublin", "country": "US", "lat": 40.0992, "lon": -83.1141, "population": 49000 }
+      ]
+    }],
+    "time": { "startsAt": "2024-06-10T00:00:00.000Z", "endsAt": "2024-06-12T14:35:00.000Z", "alternate": { "why": "read as 3 x 24 hours from now rather than 3 calendar days" } }
+  }
+}
+```
+
+`resolvesTo` is null in exactly the two cases where no single answer is correct — the name belongs to nowhere, or to more than one somewhere — because a search that returns one result confidently is the failure this is here to catch, and an expectation that named a winner would contradict its own note.
+
+Windows are anchored to a fixed instant rather than to the clock, so an expected answer that is right today is still right next month. `--anchor` moves it.
+
+Five containers: `jsonl` (one term per line, what a test suite reads), `json`, `csv`, `txt` (the queries and nothing else, for pasting into a search box) and `md` (a report to hand a reviewer or an agent). The `txt` one cannot carry the expected parse, and says so in the file it writes.
+
+`--near tokyo` builds the terms around a place and everything inside it. It is a preference rather than a fence: a quirk that needs a name with a particular property — one that means two places, one with an old name — reaches further when nothing local has that property, and the expectation always names the place it actually used.
+
+Everything here goes through the same checks the files do, in both directions. On a control set they establish that nothing is wrong. On any set at all they establish the thing that has to hold whatever the quirks are: that the query text really contains the place and the window the expectation names. A term that describes a string it does not contain would fail every implementation there will ever be, so a failure is reported as a bug in Null Island rather than in your search.
+
 ## Handling what comes out
 
 The files are hostile on purpose, and a couple of them are hostile to *you*, not just to your parser.
@@ -220,7 +270,9 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (1,570 assertions) and the CLI smoke test (49 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,387 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+
+For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 
 The boundary checks are deliberately paranoid: every reported count is re-derived with an independent point-in-polygon pass over the written file, because a ground truth you can't trust is worse than none at all.
 
@@ -248,6 +300,9 @@ npx nullisland --package 9 --clean --extract --out test/fixtures/clean
 npx nullisland --package 9 --extract --out test/fixtures --seed sand-frost-ember
 npx nullisland --from-url 'https://nullisland.app/#f=geojson&d=flight-adsb&s=quartz-harbor-drift'
 npx nullisland --format geojson --count 20 --json | jq '.notes'
+npx nullisland --terms 43 --type mobile-location-pings --out test/fixtures/search
+npx nullisland --terms 40 --near tokyo --term-format txt --stdout
+npx nullisland --list quirks --json | jq -r '.quirks[] | select(.needs=="place") | .id'
 ```
 
 `--from-url` is the one worth knowing: build a fixture by clicking, copy the share link, and the CLI rebuilds that exact file in CI. `--json` prints the counts, the bounds, the off-world tally and the notes, so a test can assert on what it was given. Full options in [packages/cli/README.md](packages/cli/README.md).
@@ -299,7 +354,29 @@ control.clean.passed;   // true — and it was checked, not assumed
 control.clean.checks;   // each check, with the measurement behind it
 ```
 
-`generate()` also returns a `map` field — a sampled, bounded view of where the geometry landed, with counts of invalid and out-of-range positions. That's what the plot draws, and it's useful on its own for assertions.
+Search terms too, from the same package and the same kind of seed:
+
+```ts
+import { generateTerms, inspectTerms, writeTerms } from "nullisland-core";
+
+const set = generateTerms({
+  seed: "harbor-lantern-drift",
+  count: 43,
+  profile: "mobile-location-pings",
+  quirks: [],          // empty deals the whole catalogue out, one per term
+  intensity: 0.15,
+  near: "anywhere",
+  anchor: "2024-06-12T14:35:00.000Z",
+});
+
+set.terms[0].text;     // the query, exactly as a user would type it
+set.terms[0].expect;   // the parse it should receive: places, coordinates, window
+set.terms[0].clean;    // the same term with nothing wrong with it
+inspectTerms(set);     // the checks that establish it describes its own text
+writeTerms(set, "jsonl", "harbor-lantern-drift");
+```
+
+Pass `clean: true` for the control set. `generate()` also returns a `map` field — a sampled, bounded view of where the geometry landed, with counts of invalid and out-of-range positions. That's what the plot draws, and it's useful on its own for assertions.
 
 Inside the package:
 
@@ -311,6 +388,9 @@ Inside the package:
 - `profiles/` — the 23 data types: field lists, geometry modes, and the cross-column arithmetic that has to hold
 - `domain.ts` — problems that only exist inside a data type, each told which columns it applies to
 - `lib/package.ts` — the format sweep, the archive, and the context written into it
+- `search/places.ts` — the gazetteer: coordinates, bounding boxes, aliases, and every other place that answers to the same name
+- `search/quirks.ts` — the query catalogue, and what a query has to contain before each one means anything
+- `search/terms.ts` — the planner, the quirks as transforms, and the expected parse that comes out of it
 
 Adding a problem means adding a catalogue entry and one transform function. Adding a data type means adding a field list — the writers, the problems and the UI pick it up from there.
 
@@ -332,6 +412,8 @@ Pull requests welcome. A new problem is two things:
 2. A transform in `packages/core/src/mutate.ts` (or `domain.ts` for a data-type-specific one), registered in the `ORDER` array. Geometry is reshaped before coordinates are mangled, coordinates before attributes, and whole-dataset transforms last.
 
 A new data type is one field list in `packages/core/src/profiles/` — the writers, the problem grid, the CLI and the package sweep pick it up from there.
+
+A new search quirk is the same shape: an entry in `packages/core/src/search/quirks.ts` — id, label, blurb, category, a phase (`plan` if it changes what the query asks for, `text` if it only changes how the query is written), and `needs` for what the query must already contain — plus one transform in `packages/core/src/search/terms.ts`. The suite will then check that it really applies rather than being offered and quietly doing nothing.
 
 Run `npm run check` before opening a PR. Anything new should keep the suite green, and problems that apply to every format get exercised against every format automatically.
 

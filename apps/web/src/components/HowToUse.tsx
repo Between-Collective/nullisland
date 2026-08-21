@@ -1,4 +1,4 @@
-import { FORMATS, PROBLEMS, PROFILES } from "nullisland-core";
+import { FORMATS, PROBLEMS, PROFILES, QUIRKS } from "nullisland-core";
 
 /**
  * The manual, on the page rather than in a wiki nobody opens.
@@ -116,6 +116,21 @@ const STEPS: Step[] = [
       </>
     ),
   },
+  {
+    title: "9. Then test the box above the map",
+    body: (
+      <>
+        A file is half of it. The other half is what somebody types into the search box —{" "}
+        <em>devices in Tokyo and Kyoto</em>, <em>devices in new zealand</em>,{" "}
+        <em>devices that were in the Estádio da Luz in Lisbon last week</em>. The{" "}
+        <strong>search terms</strong> panel deals out {QUIRKS.length} of those, one problem apiece:
+        a misspelled venue, a name that means two different cities, a window that reads two ways.
+        Each one carries the parse it should have been given — the places resolved to real
+        coordinates, the window resolved to instants — so you can assert on the answer rather than
+        squint at it. <strong>Clean</strong> gives you the control set, same as everywhere else.
+      </>
+    ),
+  },
 ];
 
 export function HowToUse() {
@@ -124,8 +139,8 @@ export function HowToUse() {
       <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">How to use this</h2>
         <p className="text-[12.5px] text-muted">
-          {PROFILES.length - 1} data types · {FORMATS.length} formats · {PROBLEMS.length} problems ·
-          everything in the browser
+          {PROFILES.length - 1} data types · {FORMATS.length} formats · {PROBLEMS.length} problems ·{" "}
+          {QUIRKS.length} search quirks · everything in the browser
         </p>
       </div>
 

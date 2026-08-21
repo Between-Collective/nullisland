@@ -22,15 +22,26 @@ import {
   CATEGORY_ORDER,
   contextToText,
   decodeConfig,
+  DEFAULT_ANCHOR,
   DEFAULT_PROFILE,
+  DEFAULT_SUBJECT_PROFILE,
   encodeConfig,
   FAMILIES,
   formatBytes,
   FORMATS,
   generate,
+  generateTerms,
   getFormat,
   getProblem,
   getProfile,
+  getQuirk,
+  getTermFormat,
+  inspectTerms,
+  MAX_TERMS,
+  PLACES,
+  QUIRK_CATEGORY_LABELS,
+  QUIRK_CATEGORY_ORDER,
+  QUIRKS,
   MAX_FEATURES,
   MAX_PACKAGE_FILES,
   PROBLEMS,
@@ -42,10 +53,13 @@ import {
   Rng,
   REGIONS,
   SITE_URL,
+  TERM_FORMATS,
+  writeTerms,
   type BoundaryId,
   type FormatId,
   type GenerateOptions,
   type ShapeId,
+  type TermFormatId,
 } from "nullisland-core";
 
 const NAME = "nullisland";
@@ -68,11 +82,12 @@ interface Args {
 const TAKES_VALUE = new Set([
   "format", "type", "profile", "count", "shape", "region", "problems", "intensity",
   "seed", "boundary", "coverage", "out", "from-url", "url", "package", "list",
+  "terms", "term-format", "quirks", "near", "anchor",
 ]);
 
 const IS_FLAG = new Set([
   "help", "h", "version", "v", "typical", "clean", "stdout", "context", "json", "compact",
-  "extract", "package", "list",
+  "extract", "package", "list", "terms",
 ]);
 
 /** `--key value`, `--key=value`, `--flag`, and bare words. No cleverness. */
@@ -222,8 +237,55 @@ function listJson(what: string): boolean {
     });
     return true;
   }
-  if (what === "regions" || what === "places") {
+  if (what === "regions") {
     write({ regions: REGIONS.map((r) => ({ id: r.id, label: r.label, lon: r.lon, lat: r.lat })) });
+    return true;
+  }
+  if (what === "quirks") {
+    write({
+      quirks: QUIRKS.map((q) => ({
+        id: q.id,
+        label: q.label,
+        blurb: q.blurb,
+        category: q.category,
+        phase: q.phase,
+        // What the query must already contain before this means anything. A
+        // caller picking ids needs to know that `local-midnight` does nothing
+        // to a query with no window in it, rather than discovering it in the
+        // skipped list afterwards.
+        needs: q.needs,
+        example: q.example,
+      })),
+      categories: QUIRK_CATEGORY_ORDER.map((id) => ({ id, label: QUIRK_CATEGORY_LABELS[id] })),
+      formats: TERM_FORMATS.map((f) => ({
+        id: f.id,
+        ext: f.ext,
+        mime: f.mime,
+        blurb: f.blurb,
+        groundTruth: f.groundTruth,
+      })),
+    });
+    return true;
+  }
+  if (what === "places" || what === "gazetteer") {
+    write({
+      places: PLACES.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        lon: p.lon,
+        lat: p.lat,
+        bbox: p.bbox,
+        country: p.country,
+        within: p.within ?? null,
+        aliases: p.aliases ?? [],
+        // Spelled out rather than omitted: "no other place has this name" is a
+        // fact worth reading, and an absent key would not say it.
+        ambiguousWith: p.ambiguousWith ?? [],
+        population: p.population ?? null,
+        note: p.note ?? null,
+      })),
+    });
     return true;
   }
   if (what === "boundaries") {
@@ -236,7 +298,10 @@ function listJson(what: string): boolean {
 function list(what: string, json: boolean): void {
   if (json) {
     if (listJson(what)) return;
-    fail(`don't know how to list "${what}"`, "try: formats, types, problems, regions, boundaries");
+    fail(
+      `don't know how to list "${what}"`,
+      "try: formats, types, problems, regions, boundaries, quirks, places",
+    );
   }
   const out = process.stdout;
   if (what === "boundaries") {
@@ -275,11 +340,36 @@ function list(what: string, json: boolean): void {
     out.write("\n");
     return;
   }
-  if (what === "regions" || what === "places") {
+  if (what === "regions") {
     for (const region of REGIONS) out.write(`${region.id.padEnd(16)} ${region.label}\n`);
     return;
   }
-  fail(`don't know how to list "${what}"`, "try: formats, types, problems, regions, boundaries");
+  if (what === "quirks") {
+    for (const category of QUIRK_CATEGORY_ORDER) {
+      out.write(`\n${QUIRK_CATEGORY_LABELS[category]}\n`);
+      for (const quirk of QUIRKS.filter((q) => q.category === category)) {
+        const needs = quirk.needs === "none" ? "" : ` [needs a ${quirk.needs.replace(/s$/, "")}]`;
+        out.write(`  ${quirk.id.padEnd(22)} ${quirk.label}${needs}\n`);
+        out.write(`  ${" ".repeat(22)} ${quirk.blurb}\n`);
+        out.write(`  ${" ".repeat(22)} e.g. ${quirk.example}\n`);
+      }
+    }
+    out.write("\n");
+    return;
+  }
+  if (what === "places" || what === "gazetteer") {
+    for (const place of PLACES) {
+      const also = place.ambiguousWith?.length ? ` (also ${place.ambiguousWith.length} elsewhere)` : "";
+      out.write(
+        `${place.id.padEnd(20)} ${place.kind.padEnd(8)} ${place.name}${also}\n`,
+      );
+    }
+    return;
+  }
+  fail(
+    `don't know how to list "${what}"`,
+    "try: formats, types, problems, regions, boundaries, quirks, places",
+  );
 }
 
 /* ── options ─────────────────────────────────────────────────────────────── */
@@ -592,6 +682,171 @@ function generatePackage(args: Args): void {
   }
 }
 
+const TERM_FORMAT_IDS = TERM_FORMATS.map((f) => f.id);
+
+/**
+ * A set of search terms, and the parse each one is supposed to receive.
+ *
+ * The same shape as `--package`: it picks its own spread, so an option that
+ * would have no effect on it is a mistake worth reporting rather than
+ * swallowing. `--clean` means here what it means everywhere else in this tool —
+ * the control case, checked before it is handed over.
+ */
+function generateTermSet(args: Args): void {
+  for (const option of ["format", "shape", "region", "problems", "boundary", "coverage", "count", "from-url", "url", "package"]) {
+    if (args.values.has(option)) {
+      fail(
+        `--${option} describes a file, and --terms builds queries`,
+        option === "count" ? "use --terms <n> for how many" : "drop it, or drop --terms",
+      );
+    }
+  }
+  for (const flag of ["typical", "context", "compact", "extract", "package"]) {
+    if (args.flags.has(flag)) fail(`--${flag} has no meaning with --terms`);
+  }
+
+  const count = Math.round(number("--terms", args.values.get("terms"), 40, 0, MAX_TERMS));
+  const clean = args.flags.has("clean");
+  const quirks = (args.values.get("quirks") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  for (const id of quirks) {
+    if (!getQuirk(id)) fail(`unknown quirk "${id}"`, `run \`${NAME} --list quirks\``);
+  }
+  // Same rule as the file half: --clean is an assertion about the output, and
+  // anything that would put a quirk in it contradicts that outright.
+  if (clean && quirks.length) {
+    fail(
+      "--clean and --quirks ask for opposite things",
+      "drop one: --clean for control queries, --quirks for awkward ones",
+    );
+  }
+
+  const profile = args.values.get("profile") ?? args.values.get("type") ?? DEFAULT_SUBJECT_PROFILE;
+  if (!PROFILES.some((p) => p.id === profile)) {
+    fail(`unknown data type "${profile}"`, `run \`${NAME} --list types\``);
+  }
+
+  const near = args.values.get("near") ?? "anywhere";
+  if (near !== "anywhere" && !PLACES.some((p) => p.id === near)) {
+    fail(`unknown place "${near}"`, `run \`${NAME} --list places\`, or use "anywhere"`);
+  }
+
+  const anchor = args.values.get("anchor") ?? DEFAULT_ANCHOR;
+  if (!Number.isFinite(Date.parse(anchor))) {
+    fail(`--anchor must be an ISO 8601 instant, got "${anchor}"`, `e.g. ${DEFAULT_ANCHOR}`);
+  }
+
+  const format = oneOf("term format", args.values.get("term-format"), TERM_FORMAT_IDS, "jsonl" as TermFormatId);
+  const seed = normaliseSeed(args.values.get("seed") ?? randomSeed());
+
+  const set = generateTerms({
+    seed,
+    count,
+    profile,
+    quirks,
+    intensity: clean ? 0 : number("--intensity", args.values.get("intensity"), 0.15, 0, 1),
+    near,
+    anchor,
+    clean,
+  });
+  const report = inspectTerms(set);
+  const file = writeTerms(set, format, seed);
+
+  if (args.flags.has("stdout")) {
+    if (args.flags.has("json")) {
+      fail("--stdout cannot be combined with --json: it prints a summary as well as the terms", "use --out instead");
+    }
+    process.stdout.write(file.data as string);
+    // stdout carries the terms and nothing else, but a set that failed its own
+    // check still has to say so — silence here would hand a fixture that lies
+    // about itself straight into a test.
+    if (!report.passed) {
+      process.stderr.write(
+        `${NAME}: this term set did not pass its own check — that is a bug in Null Island.\n` +
+          `  please report it at ${SITE_URL}\n`,
+      );
+      process.exit(1);
+    }
+    return;
+  }
+
+  const path = write(args.values.get("out") ?? ".", file.filename, file.data);
+
+  if (args.flags.has("json")) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          file: path,
+          format,
+          dataType: profile,
+          seed,
+          anchor: set.stats.anchor,
+          terms: set.terms.length,
+          bytes: file.bytes,
+          clean: set.stats.clean,
+          // What was actually applied, never what was asked for: a quirk the
+          // query shape could not carry is reported here as skipped.
+          quirks: set.stats.quirks,
+          skipped: set.terms
+            .filter((t) => t.skipped.length)
+            .map((t) => ({ id: t.id, skipped: t.skipped })),
+          checks: {
+            passed: report.passed,
+            ran: report.checks.map((c) => ({ check: c.label, ok: c.ok, detail: c.detail })),
+          },
+          notes: set.notes,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    if (!report.passed) process.exit(1);
+    return;
+  }
+
+  const out = process.stdout;
+  out.write(`${path}\n`);
+  out.write(
+    `\n${getTermFormat(format).label} · ${getProfile(profile).label} · ` +
+      `${set.terms.length.toLocaleString()} terms · ${formatBytes(file.bytes)}` +
+      `${set.stats.clean ? " · clean" : ` · ${set.stats.quirks.length} quirks`}\n` +
+      `seed ${seed} · anchored to ${set.stats.anchor}\n`,
+  );
+
+  // The checks are printed rather than assumed, for the same reason they are on
+  // a control file: a fixture is only worth anything if it really is what it
+  // says it is, and a failure means this one is lying.
+  out.write("\n");
+  for (const check of report.checks) {
+    out.write(`${check.ok ? "  ok  " : "FAIL  "}${check.label} (${check.detail})\n`);
+  }
+
+  const skipped = set.terms.filter((t) => t.skipped.length);
+  if (skipped.length) {
+    out.write("\n");
+    for (const term of skipped) {
+      for (const skip of term.skipped) {
+        out.write(`- ${term.id}: ${skip.id} not applied — ${skip.why}.\n`);
+      }
+    }
+  }
+
+  if (set.notes.length) {
+    out.write("\n");
+    for (const note of set.notes) out.write(`- ${note}\n`);
+  }
+
+  if (!report.passed) {
+    process.stderr.write(
+      `\n${NAME}: this term set did not pass its own check — that is a bug in Null Island.\n` +
+        `  please report it at ${SITE_URL}\n`,
+    );
+    process.exit(1);
+  }
+}
+
 /* ── help ────────────────────────────────────────────────────────────────── */
 
 const HELP = `${NAME} — generate deliberately broken geospatial fixtures
@@ -699,7 +954,10 @@ function main(): void {
   if (args.values.has("list") || args.flags.has("list")) {
     const listing = args.values.get("list") ?? args.positional[0];
     if (!listing) {
-      fail("--list needs something to list", "try: formats, types, problems, regions, boundaries");
+      fail(
+        "--list needs something to list",
+        "try: formats, types, problems, regions, boundaries, quirks, places",
+      );
     }
     list(listing, args.flags.has("json"));
     return;
@@ -708,6 +966,11 @@ function main(): void {
   // A count check that is cheap here and expensive to discover after ten
   // minutes of generating: an unknown problem for the chosen format or data
   // type is reported rather than silently skipped.
+  if (args.values.has("terms") || args.flags.has("terms")) {
+    generateTermSet(args);
+    return;
+  }
+
   const opts = args.values.has("package") || args.flags.has("package") ? null : optionsFrom(args);
   if (opts) {
     for (const id of opts.problems) {

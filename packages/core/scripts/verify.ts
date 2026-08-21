@@ -20,6 +20,14 @@ import {
 import { randomSeed } from "../src/rng";
 import { SEED_WORDS } from "../src/seed-words";
 import { decodeConfig, encodeConfig } from "../src/share";
+import { generateTerms, MAX_TERMS } from "../src/search/terms";
+import { inspectTerms } from "../src/search/clean";
+import { QUIRKS, EXCLUSIVE_QUIRKS } from "../src/search/quirks";
+import { PLACES, containers, getPlace } from "../src/search/places";
+import { SUBJECTS, DEFAULT_SUBJECT_PROFILE } from "../src/search/phrasing";
+import { DEFAULT_ANCHOR } from "../src/search/time";
+import { TERM_FORMATS, writeTerms } from "../src/search/write";
+import type { TermsOptions } from "../src/search/terms";
 import type { FormatId, GenerateOptions } from "../src/types";
 
 let failures = 0;
@@ -1027,6 +1035,327 @@ console.log("\n9. the reproducibility promise");
     const offenders = sources.filter((f) =>
       readFileSync(join(__dirname, "..", "src", f), "utf8").includes("toLocaleString"));
     ok("no locale-dependent formatting in the generator", offenders.length === 0, offenders.join(","));
+  }
+}
+
+console.log("\n10. search terms");
+{
+  const termOpts = (over: Partial<TermsOptions> = {}): TermsOptions => ({
+    seed: "testseed",
+    count: QUIRKS.length,
+    profile: DEFAULT_SUBJECT_PROFILE,
+    quirks: [],
+    intensity: 0.2,
+    near: "anywhere",
+    anchor: DEFAULT_ANCHOR,
+    ...over,
+  });
+
+  /* ── the gazetteer is the ground truth, so it has to be true ──────────── */
+  {
+    const ids = new Set<string>();
+    let duplicates = 0;
+    let offWorld = 0;
+    let badBox = 0;
+    let boxMissesCentre = 0;
+    let danglingWithin = 0;
+    let asymmetric = 0;
+    let emptyAlias = 0;
+
+    for (const place of PLACES) {
+      if (ids.has(place.id)) duplicates++;
+      ids.add(place.id);
+      if (Math.abs(place.lon) > 180 || Math.abs(place.lat) > 90) offWorld++;
+      const [minX, minY, maxX, maxY] = place.bbox;
+      if (minX > maxX || minY > maxY) badBox++;
+      // A centroid outside its own box means one of the two numbers is wrong,
+      // and both of them are handed to somebody as the answer.
+      if (place.lon < minX || place.lon > maxX || place.lat < minY || place.lat > maxY) {
+        boxMissesCentre++;
+      }
+      if (place.within && !getPlace(place.within)) danglingWithin++;
+      for (const other of place.ambiguousWith ?? []) {
+        // Ambiguity is a property of the name, so it cannot point one way: if
+        // Cambridge means two places, both of them have to say so, or the
+        // expectation depends on which one the generator happened to draw.
+        if (!getPlace(other)?.ambiguousWith?.includes(place.id)) asymmetric++;
+      }
+      for (const alias of place.aliases ?? []) if (!alias.name.trim()) emptyAlias++;
+    }
+
+    ok("every place has a unique id", duplicates === 0, `${duplicates} repeated`);
+    ok("every place is inside the WGS84 domain", offWorld === 0, `${offWorld} off-world`);
+    ok("every bounding box has min <= max", badBox === 0, `${badBox} inverted`);
+    ok("every centroid is inside its own box", boxMissesCentre === 0, `${boxMissesCentre} outside`);
+    ok("every `within` resolves", danglingWithin === 0, `${danglingWithin} dangling`);
+    ok("ambiguity is symmetric", asymmetric === 0, `${asymmetric} one-way`);
+    ok("no empty aliases", emptyAlias === 0, `${emptyAlias} blank`);
+
+    // A cycle would hang the generator rather than produce a wrong term, and
+    // `containers` is bounded precisely because that would be worse.
+    const deepest = Math.max(...PLACES.map((p) => containers(p).length));
+    ok("the containment chain terminates", deepest < 4, `deepest is ${deepest}`);
+  }
+
+  /* ── the catalogue and the implementation cannot drift apart ──────────── */
+  {
+    // A quirk in the catalogue with no transform behind it is the worst kind of
+    // bug this tool can have: it would be offered, selected, reported as
+    // applied, and do nothing at all.
+    const reachable = new Set<string>();
+    for (let s = 0; s < 12; s++) {
+      const set = generateTerms(termOpts({ seed: `reach-${s}`, count: QUIRKS.length * 2 }));
+      for (const term of set.terms) for (const id of term.quirks) reachable.add(id);
+    }
+    const unreachable = QUIRKS.filter((q) => !reachable.has(q.id)).map((q) => q.id);
+    ok("every quirk in the catalogue really applies", unreachable.length === 0, unreachable.join(","));
+  }
+
+  /* ── a set describes itself, whatever is in it ────────────────────────── */
+  {
+    let failed = 0;
+    let sets = 0;
+    for (const seed of ["alpha", "beta", "gamma", "delta"]) {
+      for (const clean of [true, false]) {
+        for (const near of ["anywhere", "tokyo", "lisbon", "nz"]) {
+          for (const intensity of [0, 0.5, 1]) {
+            sets++;
+            const set = generateTerms(termOpts({ seed, clean, near, intensity }));
+            if (!inspectTerms(set).passed) failed++;
+          }
+        }
+      }
+    }
+    ok("every term set passes its own checks", failed === 0, `${failed} of ${sets} failed`);
+  }
+
+  /* ── the control set is the control set ───────────────────────────────── */
+  {
+    const set = generateTerms(termOpts({ clean: true, count: 60 }));
+    ok("a clean set applies nothing", set.terms.every((t) => t.quirks.length === 0));
+    ok("a clean set says it is clean", set.stats.clean && set.stats.quirks.length === 0);
+    ok("no clean term is ambiguous", set.terms.every((t) => !t.expect.ambiguous));
+    ok("no clean term is unanswerable", set.terms.every((t) => !t.expect.empty));
+    ok("every clean term has a place that resolves", set.terms.every((t) => t.expect.resolvable));
+    ok("every clean term has text", set.terms.every((t) => t.text.trim().length > 0));
+    // Asking for quirks and getting a clean set would be the one way to hold a
+    // control case while believing it is an awkward one.
+    const quirked = generateTerms(termOpts({ count: 60 }));
+    ok("a quirked set is not clean", !quirked.stats.clean && quirked.stats.quirks.length > 0);
+  }
+
+  /* ── determinism, which is the whole promise ──────────────────────────── */
+  {
+    const a = generateTerms(termOpts({ seed: "same-seed-twice", count: 80, intensity: 0.6 }));
+    const b = generateTerms(termOpts({ seed: "same-seed-twice", count: 80, intensity: 0.6 }));
+    ok(
+      "the same seed gives the same terms",
+      JSON.stringify(a.terms) === JSON.stringify(b.terms),
+    );
+    const c = generateTerms(termOpts({ seed: "a-different-seed", count: 80, intensity: 0.6 }));
+    ok(
+      "a different seed gives different terms",
+      JSON.stringify(a.terms) !== JSON.stringify(c.terms),
+    );
+    // The anchor is what keeps yesterday's expected answer true today. Moving it
+    // moves every window with it — including the dates written into the query
+    // text, which is why "on 14 March" is not a fixed string — while the shape
+    // of the set, and which quirk each term carries, stay exactly as they were.
+    const later = generateTerms(termOpts({ seed: "same-seed-twice", count: 20, anchor: "2030-01-01T00:00:00.000Z" }));
+    const now = generateTerms(termOpts({ seed: "same-seed-twice", count: 20 }));
+    ok("the anchor is honoured", later.stats.anchor === "2030-01-01T00:00:00.000Z");
+    ok(
+      "the anchor does not change which quirk a term carries",
+      later.terms.map((t) => t.quirks.join("+")).join("|") ===
+        now.terms.map((t) => t.quirks.join("+")).join("|"),
+    );
+    const moved = later.terms.filter((t, i) => {
+      const before = now.terms[i].expect.time;
+      return t.expect.time.kind === "relative" && before.startsAt !== t.expect.time.startsAt;
+    });
+    ok("the anchor moves the relative windows",
+      moved.length === later.terms.filter((t) => t.expect.time.kind === "relative").length,
+      `${moved.length} moved`);
+  }
+
+  /* ── the expectation is the product ───────────────────────────────────── */
+  {
+    const set = generateTerms(termOpts({ count: 200, intensity: 0.5 }));
+
+    // An ambiguous name has no single answer, so naming one would contradict
+    // the note printed beside it.
+    const named = set.terms.flatMap((t) => t.expect.places).filter((p) => p.candidates.length > 1);
+    ok(
+      "an ambiguous place names no single answer",
+      named.every((p) => p.id === null),
+      `${named.filter((p) => p.id !== null).length} of ${named.length} settled anyway`,
+    );
+    ok("ambiguous candidates are ordered biggest first", named.every((p) =>
+      p.candidates.every((c, i) => i === 0 || (p.candidates[i - 1].population ?? 0) >= (c.population ?? 0))));
+
+    // A resolved one does, and it has to be a real entry rather than a name.
+    const resolved = set.terms.flatMap((t) => t.expect.places).filter((p) => p.id);
+    ok("every resolved place is in the gazetteer", resolved.every((p) => !!getPlace(p.id as string)));
+    ok("every resolved place carries coordinates",
+      resolved.every((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat) && !!p.bbox));
+
+    // Zero rows is a correct answer, and the reason is the rest of it.
+    const unanswerable = set.terms.filter((t) => t.expect.empty);
+    ok("an unanswerable query says why", unanswerable.every((t) => t.notes.length > 0),
+      `${unanswerable.length} unanswerable`);
+
+    // A window either bounds both ends or neither: half a range is a bug that
+    // reads as an open interval somebody meant.
+    ok("every window bounds both ends or neither", set.terms.every((t) =>
+      (t.expect.time.startsAt === null) === (t.expect.time.endsAt === null)));
+    ok("no window is inverted unless it says it is", set.terms.every((t) => {
+      const { startsAt, endsAt, empty } = t.expect.time;
+      return !startsAt || !endsAt || empty || Date.parse(endsAt) >= Date.parse(startsAt);
+    }));
+
+    // The control form is the thing you diff against, so it has to be one.
+    ok("every term carries a control form", set.terms.every((t) => typeof t.clean === "string"));
+
+    // Nothing may be reported as applied twice, or the coverage count lies.
+    ok("no term reports the same quirk twice",
+      set.terms.every((t) => new Set(t.quirks).size === t.quirks.length));
+    // And nothing may be reported as both applied and skipped.
+    ok("nothing is both applied and skipped",
+      set.terms.every((t) => t.skipped.every((s) => !t.quirks.includes(s.id))));
+  }
+
+  /* ── a quirk that empties the query stands alone ──────────────────────── */
+  {
+    const set = generateTerms(termOpts({ count: 300, intensity: 1 }));
+    const exclusive = set.terms.filter((t) => t.quirks.some((q) => EXCLUSIVE_QUIRKS.includes(q)));
+    ok(
+      "a term that empties the query reports nothing else",
+      exclusive.every((t) => t.quirks.length === 1),
+      `${exclusive.filter((t) => t.quirks.length > 1).length} carry extras`,
+    );
+    ok("some term did empty the query", exclusive.length > 0);
+  }
+
+  /* ── asking for one thing gets that thing ─────────────────────────────── */
+  {
+    for (const quirk of QUIRKS) {
+      const set = generateTerms(termOpts({ count: 6, quirks: [quirk.id], intensity: 0 }));
+      const applied = set.terms.filter((t) => t.quirks.includes(quirk.id)).length;
+      ok(`--quirks ${quirk.id} applies it`, applied > 0,
+        `0 of ${set.terms.length}; skips: ${set.terms.flatMap((t) => t.skipped.map((s) => s.why))[0] ?? "none"}`);
+      ok(`--quirks ${quirk.id} applies nothing else`,
+        set.terms.every((t) => t.quirks.every((id) => id === quirk.id)));
+    }
+
+    // An id that is not in the catalogue is reported rather than swallowed.
+    const bogus = generateTerms(termOpts({ count: 4, quirks: ["not-a-quirk"] }));
+    ok("an unknown quirk id is reported", bogus.notes.some((n) => n.includes("not-a-quirk")));
+    ok("an unknown quirk id applies nothing", bogus.terms.every((t) => t.quirks.length === 0));
+  }
+
+  /* ── near narrows the gazetteer ───────────────────────────────────────── */
+  {
+    const set = generateTerms(termOpts({ near: "tokyo", count: 40, quirks: [], clean: true }));
+    const allowed = new Set([
+      "tokyo",
+      ...PLACES.filter((p) => containers(p).some((c) => c.id === "tokyo")).map((p) => p.id),
+      ...containers(getPlace("tokyo")!).map((p) => p.id),
+    ]);
+    const outside = set.terms
+      .flatMap((t) => t.expect.places)
+      .filter((p) => p.id && !allowed.has(p.id));
+    ok("a clean set honours --near", outside.length === 0,
+      outside.map((p) => p.id).join(","));
+  }
+
+  /* ── the containers ───────────────────────────────────────────────────── */
+  {
+    const set = generateTerms(termOpts({ count: 30, intensity: 0.4 }));
+
+    for (const format of TERM_FORMATS) {
+      const file = writeTerms(set, format.id, "testseed");
+      const text = file.data as string;
+      ok(`${format.id} is non-empty`, text.length > 0);
+      ok(`${format.id} names itself`, file.filename.endsWith(`.${format.ext}`), file.filename);
+      ok(`${format.id} counts its own bytes`, file.bytes === Buffer.byteLength(text, "utf8"));
+    }
+
+    const jsonl = writeTerms(set, "jsonl", "testseed").data as string;
+    const lines = jsonl.trim().split("\n");
+    ok("jsonl has one line per term", lines.length === set.terms.length, `${lines.length}`);
+    let unparsed = 0;
+    for (const line of lines) {
+      try {
+        const row = JSON.parse(line);
+        if (!row.id || typeof row.query !== "string" || !row.expect) unparsed++;
+      } catch {
+        unparsed++;
+      }
+    }
+    ok("every jsonl line parses on its own", unparsed === 0, `${unparsed} bad`);
+    // A newline inside a query would split one term across two lines and every
+    // reader would see a corrupt file rather than a hard query.
+    ok("no jsonl line contains a raw newline", lines.every((l) => !l.includes("\r")));
+
+    const whole = JSON.parse(writeTerms(set, "json", "testseed").data as string);
+    ok("json holds every term", whole.terms.length === set.terms.length);
+    ok("json carries the anchor", whole.anchor === set.stats.anchor);
+
+    // A query is user input on its way into a spreadsheet, so the quoting has
+    // to hold even when the query contains commas, quotes and newlines.
+    const csv = writeTerms(set, "csv", "testseed").data as string;
+    const rows: string[][] = [];
+    let field = "";
+    let row: string[] = [];
+    let quoted = false;
+    for (let i = 0; i < csv.length; i++) {
+      const ch = csv[i];
+      if (quoted) {
+        if (ch === '"' && csv[i + 1] === '"') { field += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else field += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === ",") { row.push(field); field = ""; }
+      else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (ch !== "\r") field += ch;
+    }
+    if (field || row.length) { row.push(field); rows.push(row); }
+    const widths = new Set(rows.map((r) => r.length));
+    ok("every csv row has the same number of columns", widths.size === 1,
+      [...widths].join(","));
+    ok("csv has a row per term plus a header", rows.length === set.terms.length + 1, `${rows.length}`);
+    // The query has to survive the round trip byte for byte, or the fixture in
+    // the spreadsheet is not the fixture that was generated.
+    const queries = rows.slice(1).map((r) => r[1]);
+    ok("csv preserves every query verbatim",
+      queries.every((q, i) => q === set.terms[i].text),
+      `${queries.filter((q, i) => q !== set.terms[i].text).length} mangled`);
+  }
+
+  /* ── the edges ────────────────────────────────────────────────────────── */
+  {
+    ok("zero terms is an empty set", generateTerms(termOpts({ count: 0 })).terms.length === 0);
+    ok("the term count is clamped", generateTerms(termOpts({ count: MAX_TERMS + 500, intensity: 0 })).terms.length === MAX_TERMS);
+    // A seed is untrusted input on its way to a filename, exactly as it is on
+    // the file side.
+    const hostile = writeTerms(generateTerms(termOpts({ count: 2, seed: "../../etc/passwd" })), "jsonl", "../../etc/passwd");
+    ok("a hostile seed cannot escape the filename", !hostile.filename.includes("/"), hostile.filename);
+    // An anchor that is not a date falls back rather than producing Invalid Date
+    // strings throughout the expectation.
+    const bad = generateTerms(termOpts({ count: 4, anchor: "not-a-date" }));
+    ok("a bad anchor falls back to the default", bad.stats.anchor === DEFAULT_ANCHOR, bad.stats.anchor);
+  }
+
+  /* ── every data type has a noun, so a term can be about it ────────────── */
+  {
+    const missing = PROFILES.filter((p) => !SUBJECTS[p.id]).map((p) => p.id);
+    ok("every data type has a search subject", missing.length === 0, missing.join(","));
+    const empty = Object.entries(SUBJECTS).filter(([, s]) => !s.singular || !s.plural);
+    ok("every subject has both forms", empty.length === 0, empty.map(([id]) => id).join(","));
+    // And the noun really reaches the query, or the data type is decorative.
+    const set = generateTerms(termOpts({ profile: "maritime-ais", count: 12, clean: true }));
+    ok("the data type decides the noun",
+      set.terms.some((t) => t.text.includes("vessels")) && set.stats.profile === "maritime-ais");
   }
 }
 
