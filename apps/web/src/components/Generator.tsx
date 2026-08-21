@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CommandLine } from "./CommandLine";
 import { Contribute } from "./Contribute";
 import { HeroPanel } from "./HeroPanel";
@@ -8,34 +8,41 @@ import { HowToUse } from "./HowToUse";
 import { OutputPanel } from "./OutputPanel";
 import { PackagePanel } from "./PackagePanel";
 import { ProblemGrid } from "./ProblemGrid";
+import { QuirkGrid } from "./QuirkGrid";
 import { Sidebar } from "./Sidebar";
 import { TermsPanel } from "./TermsPanel";
-import { Button, Card } from "./ui";
+import { TermsSidebar } from "./TermsSidebar";
+import { Wordmark } from "./Logo";
+import { Button, Card, Disclosure, ModeTab } from "./ui";
 import {
   BOUNDARY_IDS,
   DEFAULT_PROFILE,
+  DEFAULT_SUBJECT_PROFILE,
   EXCLUSIVE_PROBLEM,
   FORMATS,
   MAX_FEATURES,
   PROBLEMS,
   PROFILES,
+  QUIRKS,
   REGIONS,
   appliesTo,
   appliesToProfile,
   buildPackage,
-  decodeConfig,
+  decodeApp,
   domainProblems,
-  encodeConfig,
+  encodeApp,
   generate,
   getFormat,
   getProfile,
   profileShape,
   randomSeed,
+  type AppMode,
   type FormatId,
   type GenerateOptions,
   type GeneratedFile,
   type GeneratedPackage,
   type ShapeId,
+  type TermsConfig,
 } from "nullisland-core";
 import { copyFile, downloadFile } from "@/lib/download";
 
@@ -56,6 +63,15 @@ const JSON_FORMATS: FormatId[] = ["geojson", "ndjson", "topojson"];
  * waits. Nothing is capped: the Generate button is right there.
  */
 const LINK_AUTORUN_LIMIT = 10000;
+
+const TERM_DEFAULTS: TermsConfig = {
+  count: QUIRKS.length,
+  quirks: [],
+  intensity: 0.15,
+  near: "anywhere",
+  clean: false,
+  format: "jsonl",
+};
 
 const DEFAULTS: GenerateOptions = {
   format: "geojson",
@@ -106,6 +122,8 @@ interface Flash {
 }
 
 export function Generator() {
+  const [mode, setMode] = useState<AppMode>("files");
+  const [terms, setTerms] = useState<TermsConfig>(TERM_DEFAULTS);
   const [opts, setOpts] = useState<GenerateOptions>(DEFAULTS);
   const [result, setResult] = useState<Result>({ source: null, file: null, error: null });
   const [flash, setFlash] = useState<Flash | null>(null);
@@ -115,14 +133,29 @@ export function Generator() {
   const [packageBusy, setPackageBusy] = useState(false);
   // Set only from a URL, and cleared by the user's first deliberate action.
   const [heldBack, setHeldBack] = useState(0);
-  const hydrated = useRef(false);
+  /**
+   * Whether the URL has been read into state yet.
+   *
+   * State rather than a ref, and the distinction matters: the effect below
+   * writes the current settings back to the hash, and a ref would let it run in
+   * the same commit as the read — before the state updates from the URL had
+   * landed — overwriting the link with the defaults it was about to replace.
+   * As state, `hydrated` only becomes true in the commit that already carries
+   * the settings from the link, so the first write describes them rather than
+   * clobbering them.
+   */
+  const [hydrated, setHydrated] = useState(false);
 
   const confirmed = (action: FlashAction) => flash?.action === action && flash.ok;
 
   // Derived rather than stored: anything not yet generated from the current
   // settings is, by definition, still in flight.
-  const busy = !heldBack && result.source !== opts;
+  const busy = mode === "files" && !heldBack && result.source !== opts;
   const { file, error } = result;
+
+  const patchTerms = useCallback((next: Partial<TermsConfig>) => {
+    setTerms((current) => ({ ...current, ...next }));
+  }, []);
 
   const patch = useCallback((next: Partial<GenerateOptions>) => {
     // Touching any control is the user taking the wheel, so the link's hold
@@ -145,24 +178,28 @@ export function Generator() {
   // once mounted, so this genuinely is an effect. It runs exactly once, and the
   // one extra render it causes is the price of matching the prerendered HTML.
   useEffect(() => {
-    const fromUrl = window.location.hash.length > 1 ? decodeConfig(window.location.hash) : null;
+    const fromUrl = window.location.hash.length > 1 ? decodeApp(window.location.hash) : null;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpts((current) => ({ ...current, seed: randomSeed(), ...(fromUrl ?? {}) }));
-    if ((fromUrl?.count ?? 0) > LINK_AUTORUN_LIMIT) {
+    setOpts((current) => ({ ...current, seed: randomSeed(), ...(fromUrl?.file ?? {}) }));
+    if (fromUrl?.terms) setTerms((current) => ({ ...current, ...fromUrl.terms }));
+    if (fromUrl?.mode) setMode(fromUrl.mode);
+    if ((fromUrl?.file.count ?? 0) > LINK_AUTORUN_LIMIT) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setHeldBack(fromUrl!.count!);
+      setHeldBack(fromUrl!.file.count!);
     }
-    hydrated.current = true;
+    setHydrated(true);
   }, []);
 
   // A hash-only navigation — a pasted share link, or the back button — never
   // remounts, so the effect above would not see it.
   useEffect(() => {
     const onHashChange = () => {
-      const next = decodeConfig(window.location.hash);
-      if (!Object.keys(next).length) return;
-      setHeldBack((next.count ?? 0) > LINK_AUTORUN_LIMIT ? next.count! : 0);
-      setOpts((current) => ({ ...current, ...next }));
+      const next = decodeApp(window.location.hash);
+      if (!Object.keys(next.file).length && !next.terms && !next.mode) return;
+      setHeldBack((next.file.count ?? 0) > LINK_AUTORUN_LIMIT ? next.file.count! : 0);
+      setOpts((current) => ({ ...current, ...next.file }));
+      if (next.terms) setTerms((current) => ({ ...current, ...next.terms }));
+      if (next.mode) setMode(next.mode);
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -172,6 +209,9 @@ export function Generator() {
   // stop a slider drag from generating a 25 MB file on every pixel.
   useEffect(() => {
     if (heldBack) return;
+    // Search mode generates its own output, cheaply and synchronously, so a
+    // multi-megabyte file has no business being rebuilt behind it.
+    if (mode !== "files") return;
     const timer = setTimeout(() => {
       try {
         setResult({ source: opts, file: generate(opts), error: null });
@@ -184,12 +224,12 @@ export function Generator() {
       }
     }, 220);
     return () => clearTimeout(timer);
-  }, [opts, heldBack]);
+  }, [opts, heldBack, mode]);
 
   useEffect(() => {
-    if (!hydrated.current) return;
-    window.history.replaceState(null, "", `#${encodeConfig(opts)}`);
-  }, [opts]);
+    if (!hydrated) return;
+    window.history.replaceState(null, "", `#${encodeApp({ mode, file: opts, terms })}`);
+  }, [hydrated, opts, terms, mode]);
 
   useEffect(() => {
     if (!flash) return;
@@ -268,7 +308,7 @@ export function Generator() {
   const share = async () => {
     try {
       await navigator.clipboard.writeText(
-        `${window.location.origin}${window.location.pathname}#${encodeConfig(opts)}`,
+        `${window.location.origin}${window.location.pathname}#${encodeApp({ mode, file: opts, terms })}`,
       );
       setFlash({ action: "share", message: "Link copied", ok: true });
     } catch {
@@ -294,172 +334,269 @@ export function Generator() {
     setFlash({ action: "boundary", message: "Boundary saved", ok: true });
   };
 
+  // The generic export has no subject to search for, so the search half falls
+  // through to location pings — "devices". Pick any real data type and both
+  // halves follow it: vessels for AIS, parcels for cadastral.
+  const termProfile = opts.profile === DEFAULT_PROFILE ? DEFAULT_SUBJECT_PROFILE : opts.profile;
+
+  const shareTitle =
+    mode === "terms"
+      ? "Copy a link that rebuilds this exact term set"
+      : "Copy a link that reproduces this exact file";
+
   return (
-    /* Output first on a phone — the file and its Download are the point, and
-       the settings column is long. Side by side from lg up, sidebar leading. */
-    <div className="grid lg:grid-cols-[316px_minmax(0,1fr)]">
-      <Sidebar
-        opts={opts}
-        patch={patch}
-        countSteps={COUNT_STEPS}
-        countIndex={closestStep(opts.count)}
-      />
+    <div>
+      {/* The two halves, and the only navigation on the page. Sticky, because
+          it is how you get from one to the other and the page below it is
+          several screens long. */}
+      <div
+        role="tablist"
+        aria-label="What to generate"
+        className="sticky top-0 z-30 flex h-14 items-end gap-5 border-b border-line bg-card px-4 sm:px-5"
+      >
+        {/* The page header above already carries the name; on a phone the bar
+            needs its width for the two tabs. */}
+        <Wordmark className="mb-2.5 mr-1 hidden shrink-0 sm:flex" />
+        <ModeTab
+          active={mode === "files"}
+          onClick={() => setMode("files")}
+          count={`${FORMATS.length} formats · ${PROBLEMS.length} problems`}
+        >
+          Files
+        </ModeTab>
+        <ModeTab
+          active={mode === "terms"}
+          onClick={() => setMode("terms")}
+          count={`${QUIRKS.length} quirks`}
+        >
+          Search terms
+        </ModeTab>
+      </div>
 
-      <main className="order-1 min-w-0 bg-paper p-4 sm:p-5 lg:order-2">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <label className="flex w-full min-w-0 items-center gap-2 rounded-full border border-line-strong bg-card px-3.5 py-2 sm:w-auto sm:flex-1">
-            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">seed</span>
-            <input
-              value={opts.seed}
-              onChange={(e) => patch({ seed: e.target.value.slice(0, 40) })}
-              spellCheck={false}
-              aria-label="Seed"
-              placeholder="three-word-seed, or anything you like"
-              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-ink outline-none placeholder:text-dim"
+      {/* Output first on a phone — the thing you came for is the point, and the
+          settings column is long. Side by side from lg up, rail leading. */}
+      <div className="grid lg:grid-cols-[316px_minmax(0,1fr)]">
+        <aside className="order-2 flex flex-col gap-6 border-line bg-card p-4 sm:p-5 lg:sticky lg:top-14 lg:order-1 lg:max-h-[calc(100svh-3.5rem)] lg:self-start lg:overflow-y-auto lg:border-r scroll-thin">
+          {mode === "files" ? (
+            <Sidebar
+              opts={opts}
+              patch={patch}
+              countSteps={COUNT_STEPS}
+              countIndex={closestStep(opts.count)}
             />
-          </label>
-
-          {/* The buttons carry the confirmation now, but it still has to be
-              announced — a drawn tick is invisible to a screen reader. */}
-          <span
-            aria-live="polite"
-            className={`min-w-[72px] font-mono text-[11px] ${
-              flash && !flash.ok ? "text-cat-encoding" : "text-muted"
-            }`}
-          >
-            {busy ? "working…" : (flash?.message ?? "")}
-          </span>
-
-          {JSON_FORMATS.includes(opts.format) && (
-            <Button
-              onClick={() => patch({ pretty: !opts.pretty })}
-              active={opts.pretty}
-              title="Toggle pretty-printed JSON"
-            >
-              Pretty print
-            </Button>
+          ) : (
+            <TermsSidebar
+              terms={terms}
+              profile={opts.profile}
+              subjectProfile={termProfile}
+              patchTerms={patchTerms}
+              onProfile={(id) => patch({ profile: id })}
+            />
           )}
-          <Button onClick={() => patch({ seed: randomSeed() })} title="New random seed">
-            New seed
-          </Button>
-          <Button
-            onClick={randomiseEverything}
-            title="Roll a new format, size, place and problem set in one go"
-          >
-            {/* Decorative: the label already says what the button does. */}
-            <span className="emoji" aria-hidden>
-              🎲
+        </aside>
+
+        <main className="order-1 min-w-0 bg-paper p-4 sm:p-5 lg:order-2">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <label className="flex w-full min-w-0 items-center gap-2 rounded-full border border-line-strong bg-card px-3.5 py-2 sm:w-auto sm:flex-1">
+              <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">seed</span>
+              <input
+                value={opts.seed}
+                onChange={(e) => patch({ seed: e.target.value.slice(0, 40) })}
+                spellCheck={false}
+                aria-label="Seed"
+                placeholder="three-word-seed, or anything you like"
+                className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-ink outline-none placeholder:text-dim"
+              />
+            </label>
+
+            {/* The buttons carry the confirmation now, but it still has to be
+                announced — a drawn tick is invisible to a screen reader. */}
+            <span
+              aria-live="polite"
+              className={`min-w-[72px] font-mono text-[11px] ${
+                flash && !flash.ok ? "text-cat-encoding" : "text-muted"
+              }`}
+            >
+              {busy ? "working…" : (flash?.message ?? "")}
             </span>
-            Randomise everything
-          </Button>
-          <Button
-            onClick={share}
-            confirmed={confirmed("share")}
-            confirmLabel="Link copied"
-            title="Copy a link that reproduces this exact file"
-          >
-            Share
-          </Button>
-        </div>
 
-        {heldBack ? (
-          <Card className="p-5">
-            <h2 className="text-[15px] font-semibold tracking-tight text-ink">
-              This link asks for {heldBack.toLocaleString()} features.
-            </h2>
-            <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
-              A file that size takes a few seconds to build, and the tab will not respond while it
-              does — long enough to be killed on a phone. Nothing has been generated yet, and every
-              setting from the link is already loaded, so you can change them first.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => setHeldBack(0)}>
-                Generate anyway
-              </Button>
+            {mode === "files" && JSON_FORMATS.includes(opts.format) && (
               <Button
-                onClick={() => {
-                  setHeldBack(0);
-                  setOpts((current) => ({ ...current, count: 1000 }));
-                }}
+                onClick={() => patch({ pretty: !opts.pretty })}
+                active={opts.pretty}
+                title="Toggle pretty-printed JSON"
               >
-                Use 1,000 instead
+                Pretty print
               </Button>
-            </div>
-          </Card>
-        ) : error ? (
-          <Card className="p-5">
-            <p className="text-[13px] text-cat-encoding">Generation failed: {error}</p>
-            <p className="mt-2 text-[12px] text-muted">
-              That is a bug in Null Island, not in your settings. Lower the feature count and try again.
-            </p>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            <HeroPanel
-              file={file}
-              busy={busy}
-              onDownload={download}
-              onCopy={copy}
-              onDownloadBoundary={downloadBoundary}
-              copied={confirmed("copy")}
-              saved={confirmed("download")}
-              boundarySaved={confirmed("boundary")}
-            />
-            <OutputPanel file={file} formatLabel={getFormat(opts.format).label} />
+            )}
+            <Button onClick={() => patch({ seed: randomSeed() })} title="New random seed">
+              New seed
+            </Button>
+            {mode === "files" && (
+              <Button
+                onClick={randomiseEverything}
+                title="Roll a new format, size, place and problem set in one go"
+              >
+                {/* Decorative: the label already says what the button does. */}
+                <span className="emoji" aria-hidden>
+                  🎲
+                </span>
+                Randomise everything
+              </Button>
+            )}
+            <Button
+              onClick={share}
+              confirmed={confirmed("share")}
+              confirmLabel="Link copied"
+              title={shareTitle}
+            >
+              Share
+            </Button>
           </div>
-        )}
 
-        <div className="mt-3">
-          <PackagePanel
-            pkg={pkg}
-            busy={packageBusy}
-            size={packageSize}
-            onSize={setPackageSize}
-            clean={packageClean}
-            onClean={setPackageClean}
-            onBuild={buildPack}
-          />
-        </div>
+          {mode === "terms" ? (
+            <div className="space-y-3">
+              <TermsPanel seed={opts.seed} profile={termProfile} terms={terms} />
+              <div className="pt-5">
+                <QuirkGrid
+                  selected={terms.quirks}
+                  clean={terms.clean}
+                  profile={termProfile}
+                  onToggle={(id) =>
+                    setTerms((current) => ({
+                      ...current,
+                      // Ticking a quirk is asking for it, which contradicts a
+                      // control set — so it takes the set out of clean rather
+                      // than being quietly ignored.
+                      clean: false,
+                      quirks: current.quirks.includes(id)
+                        ? current.quirks.filter((q) => q !== id)
+                        : [...current.quirks, id],
+                    }))
+                  }
+                  onClean={() => patchTerms({ clean: true, quirks: [] })}
+                  onSpread={() => patchTerms({ clean: false, quirks: [] })}
+                  onPickRandom={(howMany) => {
+                    const pool = QUIRKS.map((q) => q.id).sort(() => Math.random() - 0.5);
+                    patchTerms({ clean: false, quirks: pool.slice(0, howMany) });
+                  }}
+                />
+              </div>
+            </div>
+          ) : heldBack ? (
+            <Card className="p-5">
+              <h2 className="text-[15px] font-semibold tracking-tight text-ink">
+                This link asks for {heldBack.toLocaleString()} features.
+              </h2>
+              <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
+                A file that size takes a few seconds to build, and the tab will not respond while it
+                does — long enough to be killed on a phone. Nothing has been generated yet, and every
+                setting from the link is already loaded, so you can change them first.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="primary" onClick={() => setHeldBack(0)}>
+                  Generate anyway
+                </Button>
+                <Button
+                  onClick={() => {
+                    setHeldBack(0);
+                    setOpts((current) => ({ ...current, count: 1000 }));
+                  }}
+                >
+                  Use 1,000 instead
+                </Button>
+              </div>
+            </Card>
+          ) : error ? (
+            <Card className="p-5">
+              <p className="text-[13px] text-cat-encoding">Generation failed: {error}</p>
+              <p className="mt-2 text-[12px] text-muted">
+                That is a bug in Null Island, not in your settings. Lower the feature count and try
+                again.
+              </p>
+            </Card>
+          ) : (
+            <>
+              <div className="space-y-3">
+                <HeroPanel
+                  file={file}
+                  busy={busy}
+                  onDownload={download}
+                  onCopy={copy}
+                  onDownloadBoundary={downloadBoundary}
+                  copied={confirmed("copy")}
+                  saved={confirmed("download")}
+                  boundarySaved={confirmed("boundary")}
+                />
+                <OutputPanel file={file} formatLabel={getFormat(opts.format).label} />
+              </div>
 
-        <div className="mt-8">
-          <ProblemGrid
-            selected={opts.problems}
-            format={opts.format}
-            profile={opts.profile}
-            onToggle={toggleProblem}
-            onPickTypical={() =>
-              patch({
-                // What this data type is known for: the general problems it
-                // ships with, plus a few of its own. Not all of its own — a
-                // dozen at once stops being a fixture and starts being noise.
-                problems: [
-                  ...getProfile(opts.profile).apt,
-                  ...domainProblems(opts.profile).slice(0, 3).map((p) => p.id),
-                ].filter((id) => applicable.some((p) => p.id === id)),
-              })
-            }
-            onPickRandom={pickRandomProblems}
-            onSelectAll={() =>
-              patch({ problems: applicable.filter((p) => p.id !== EXCLUSIVE_PROBLEM).map((p) => p.id) })
-            }
-            onClear={() => patch({ problems: [] })}
-          />
-        </div>
+              <div className="mt-3">
+                <PackagePanel
+                  pkg={pkg}
+                  busy={packageBusy}
+                  size={packageSize}
+                  onSize={setPackageSize}
+                  clean={packageClean}
+                  onClean={setPackageClean}
+                  onBuild={buildPack}
+                />
+              </div>
 
-        {/* After the problems, because the question it answers comes after
-            them: once the file loads, does the box above the map survive what
-            gets typed into it. Seeded from the same words as everything else,
-            so one seed reproduces the whole page. */}
-        <div className="mt-3">
-          <TermsPanel seed={opts.seed} profile={opts.profile} />
-        </div>
+              <div className="mt-8">
+                <ProblemGrid
+                  selected={opts.problems}
+                  format={opts.format}
+                  profile={opts.profile}
+                  onToggle={toggleProblem}
+                  onPickTypical={() =>
+                    patch({
+                      // What this data type is known for: the general problems it
+                      // ships with, plus a few of its own. Not all of its own — a
+                      // dozen at once stops being a fixture and starts being noise.
+                      problems: [
+                        ...getProfile(opts.profile).apt,
+                        ...domainProblems(opts.profile).slice(0, 3).map((p) => p.id),
+                      ].filter((id) => applicable.some((p) => p.id === id)),
+                    })
+                  }
+                  onPickRandom={pickRandomProblems}
+                  onSelectAll={() =>
+                    patch({
+                      problems: applicable
+                        .filter((p) => p.id !== EXCLUSIVE_PROBLEM)
+                        .map((p) => p.id),
+                    })
+                  }
+                  onClear={() => patch({ problems: [] })}
+                />
+              </div>
+            </>
+          )}
 
-        <HowToUse />
-
-        <CommandLine />
-
-        <Contribute />
-      </main>
+          {/* Shared by both halves, and read once. Closed by default: expanded
+              they were a third of the page, sitting between the reader and
+              nothing at all. */}
+          <section className="mt-8">
+            <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">Reference</h2>
+            <Disclosure
+              title="How to use this"
+              hint={`${PROFILES.length - 1} data types · ${FORMATS.length} formats · ${PROBLEMS.length} problems · ${QUIRKS.length} search quirks`}
+            >
+              <HowToUse />
+            </Disclosure>
+            <Disclosure
+              title="Generating a lot of them"
+              hint="The command line — same generator, same bytes, in CI"
+            >
+              <CommandLine />
+            </Disclosure>
+            <Disclosure title="Contributing" hint="A way to break a map that isn't here yet">
+              <Contribute />
+            </Disclosure>
+          </section>
+        </main>
+      </div>
     </div>
   );
 }

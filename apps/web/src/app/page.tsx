@@ -20,7 +20,10 @@ export default function Home() {
           <GitHubStar className="mt-1 shrink-0" />
         </header>
 
-        <div className="overflow-hidden rounded-[26px] border border-line bg-card shadow-[0_1px_2px_rgba(12,13,13,0.04),0_12px_32px_-12px_rgba(12,13,13,0.12)]">
+        {/* overflow-clip, not overflow-hidden: hidden makes this a scroll
+            container, which silently stops the sticky rail inside it from
+            sticking. Clip rounds the corners without that side effect. */}
+        <div className="overflow-clip rounded-[26px] border border-line bg-card shadow-[0_1px_2px_rgba(12,13,13,0.04),0_12px_32px_-12px_rgba(12,13,13,0.12)]">
           <Generator />
         </div>
 

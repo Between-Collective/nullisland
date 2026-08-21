@@ -1,6 +1,5 @@
 "use client";
 
-import { Wordmark } from "./Logo";
 import { Field, Segmented, type Option } from "./ui";
 import {
   BOUNDARIES,
@@ -86,12 +85,11 @@ export function Sidebar({
   const profile = getProfile(opts.profile);
   const natural = profileShape(profile);
 
+  // A fragment, not an <aside>: the rail itself belongs to the layout, which
+  // owns the sticky positioning and swaps this out for the search half's
+  // controls. The wordmark lives in the mode bar above, for the same reason.
   return (
-    <aside className="order-2 flex flex-col gap-6 border-line bg-card p-4 sm:p-5 lg:order-1 lg:h-full lg:border-r">
-      <div className="flex items-center justify-between">
-        <Wordmark />
-      </div>
-
+    <>
       {/* Nine formats divide exactly into a 3x3 block, so every tile is the
           same size at every breakpoint. */}
       <div role="radiogroup" aria-label="Output format" className="space-y-2">
@@ -239,6 +237,6 @@ export function Sidebar({
           </>
         )}
       </div>
-    </aside>
+    </>
   );
 }

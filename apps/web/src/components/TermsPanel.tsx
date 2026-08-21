@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, Card, CardTitle } from "./ui";
 import { downloadFile, formatBytes } from "@/lib/download";
 import {
-  PLACES,
   QUIRKS,
   QUIRK_CATEGORY_LABELS,
   TERM_FORMATS,
@@ -14,12 +13,10 @@ import {
   inspectTerms,
   writeTerms,
   DEFAULT_ANCHOR,
-  DEFAULT_PROFILE,
-  DEFAULT_SUBJECT_PROFILE,
   type QuirkCategory,
   type SearchTerm,
-  type TermFormatId,
   type TermSet,
+  type TermsConfig,
 } from "nullisland-core";
 
 /**
@@ -41,17 +38,6 @@ const DOT: Record<QuirkCategory, string> = {
   encoding: "bg-cat-encoding",
   adversarial: "bg-cat-geometry",
 };
-
-/** A taste, one of everything, or everything three times over. */
-const SIZES = [12, QUIRKS.length, 120];
-
-/** Somewhere to pin the terms to. Ordered so the big containers lead. */
-const NEARBY = [
-  { id: "anywhere", label: "Anywhere" },
-  ...PLACES.filter((p) => p.kind === "country" || p.kind === "region" || p.kind === "city")
-    .map((p) => ({ id: p.id, label: `${p.name}${p.kind === "city" ? "" : ` (${p.kind})`}` }))
-    .sort((a, b) => a.label.localeCompare(b.label, "en")),
-];
 
 /** The whitespace nobody can see, made visible without changing the string. */
 function visible(text: string): string {
@@ -171,16 +157,15 @@ function Row({ term }: { term: SearchTerm }) {
   );
 }
 
-export function TermsPanel({ seed, profile: chosen }: { seed: string; profile: string }) {
-  // The generic export is a schema with no subject — nobody searches for
-  // "records" — so it falls through to location pings, which is what a term
-  // about devices needs. Pick any real data type in the sidebar and the terms
-  // follow it: vessels for AIS, parcels for cadastral.
-  const profile = chosen === DEFAULT_PROFILE ? DEFAULT_SUBJECT_PROFILE : chosen;
-  const [count, setCount] = useState(QUIRKS.length);
-  const [clean, setClean] = useState(false);
-  const [near, setNear] = useState("anywhere");
-  const [format, setFormat] = useState<TermFormatId>("jsonl");
+export function TermsPanel({
+  seed,
+  profile,
+  terms,
+}: {
+  seed: string;
+  profile: string;
+  terms: TermsConfig;
+}) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -190,19 +175,19 @@ export function TermsPanel({ seed, profile: chosen }: { seed: string; profile: s
     () =>
       generateTerms({
         seed,
-        count,
+        count: terms.count,
         profile,
-        quirks: [],
-        intensity: clean ? 0 : 0.15,
-        near,
+        quirks: terms.quirks,
+        intensity: terms.intensity,
+        near: terms.near,
         anchor: DEFAULT_ANCHOR,
-        clean,
+        clean: terms.clean,
       }),
-    [seed, count, profile, near, clean],
+    [seed, profile, terms],
   );
 
   const report = useMemo(() => inspectTerms(set), [set]);
-  const file = useMemo(() => writeTerms(set, format, seed), [set, format, seed]);
+  const file = useMemo(() => writeTerms(set, terms.format, seed), [set, terms.format, seed]);
   const subject = getSubject(profile);
 
   useEffect(() => {
@@ -229,134 +214,34 @@ export function TermsPanel({ seed, profile: chosen }: { seed: string; profile: s
   };
 
   const covered = new Set(set.stats.quirks);
+  const formatMeta = TERM_FORMATS.find((f) => f.id === terms.format);
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3.5">
         <div className="min-w-0">
-          <CardTitle>Search terms</CardTitle>
-          <p className="mt-1.5 max-w-xl text-[12.5px] leading-relaxed text-muted">
-            The other end of the same problem: not the file your map is handed, but the sentence
-            somebody types above it. Every term comes with the parse it is supposed to receive —
-            which places, resolved to real coordinates, and which window, resolved to instants — so
-            you can assert on the answer instead of squinting at it.
+          <CardTitle>
+            {set.terms.length.toLocaleString()} terms about {subject.plural}
+          </CardTitle>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+            {terms.clean ? (
+              <span className="text-mint-ink">
+                Well formed, every one of them: one unambiguous place, a window that resolves, one
+                correct answer.
+              </span>
+            ) : (
+              <>
+                {covered.size} of {QUIRKS.length} quirks, dealt one per term. Each carries the parse
+                it should have received.
+              </>
+            )}
           </p>
-          {clean ? (
-            <p className="mt-2 max-w-xl text-[12.5px] leading-relaxed text-mint-ink">
-              One unambiguous place, a window that resolves, one correct answer. Every one of these
-              should work. Run them before the awkward ones, not after.
-            </p>
-          ) : (
-            <p className="mt-2 max-w-xl text-[12.5px] leading-relaxed text-muted">
-              {covered.size} of {QUIRKS.length} quirks in this set, dealt one per term — so a set of{" "}
-              {QUIRKS.length} is {QUIRKS.length} different problems rather than {QUIRKS.length} rolls
-              of the same dice.
-            </p>
-          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div role="radiogroup" aria-label="Term set contents" className="flex gap-1.5">
-            {[
-              { value: false, label: "Awkward", hint: "One thing hard about each" },
-              { value: true, label: "Clean", hint: "Well-formed queries — the control set" },
-            ].map((option) => (
-              <button
-                key={String(option.value)}
-                type="button"
-                role="radio"
-                aria-checked={option.value === clean}
-                title={option.hint}
-                onClick={() => setClean(option.value)}
-                className={[
-                  "rounded-full border px-3 py-1.5 text-[11.5px] transition-colors",
-                  option.value === clean
-                    ? "border-ink bg-ink text-white"
-                    : "border-line-strong bg-white text-muted hover:border-dim hover:text-ink",
-                ].join(" ")}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          <div role="radiogroup" aria-label="How many terms" className="flex gap-1.5">
-            {SIZES.map((option) => (
-              <button
-                key={option}
-                type="button"
-                role="radio"
-                aria-checked={option === count}
-                title={
-                  option === QUIRKS.length
-                    ? "One of every quirk in the catalogue"
-                    : `${option} terms`
-                }
-                onClick={() => setCount(option)}
-                className={[
-                  "rounded-full border px-3 py-1.5 font-mono text-[11.5px] tabular-nums transition-colors",
-                  option === count
-                    ? "border-ink bg-ink text-white"
-                    : "border-line-strong bg-white text-muted hover:border-dim hover:text-ink",
-                ].join(" ")}
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-4 py-3">
-        <label className="flex items-center gap-2">
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-dim">
-            near
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="font-mono text-[11px] tabular-nums text-dim">
+            {formatBytes(file.bytes)}
           </span>
-          <select
-            value={near}
-            onChange={(e) => setNear(e.target.value)}
-            aria-label="Build terms around a place"
-            className="rounded-full border border-line-strong bg-white px-3 py-1.5 font-mono text-[11.5px] text-ink outline-none hover:border-dim"
-          >
-            {NEARBY.map((place) => (
-              <option key={place.id} value={place.id}>
-                {place.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex items-center gap-2">
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.13em] text-dim">
-            as
-          </span>
-          <select
-            value={format}
-            onChange={(e) => setFormat(e.target.value as TermFormatId)}
-            aria-label="Download format"
-            className="rounded-full border border-line-strong bg-white px-3 py-1.5 font-mono text-[11.5px] text-ink outline-none hover:border-dim"
-          >
-            {TERM_FORMATS.map((meta) => (
-              <option key={meta.id} value={meta.id} title={meta.blurb}>
-                {meta.label}
-                {meta.groundTruth ? "" : " — queries only"}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <span
-          className="font-mono text-[11px] tabular-nums text-muted"
-          title={
-            chosen === DEFAULT_PROFILE
-              ? "The generic export has no subject to search for, so these are about devices. Pick a data type in the sidebar and the terms follow it."
-              : "The noun comes from the data type in the sidebar"
-          }
-        >
-          {set.terms.length} terms about {subject.plural} · {formatBytes(file.bytes)}
-        </span>
-
-        <div className="ml-auto flex gap-2">
           <Button onClick={copy} confirmed={copied} confirmLabel="Copied">
             Copy
           </Button>
@@ -367,7 +252,7 @@ export function TermsPanel({ seed, profile: chosen }: { seed: string; profile: s
             confirmLabel="Saved"
             title={file.filename}
           >
-            Download .{TERM_FORMATS.find((f) => f.id === format)?.ext}
+            Download .{formatMeta?.ext}
           </Button>
         </div>
       </div>
@@ -392,7 +277,9 @@ export function TermsPanel({ seed, profile: chosen }: { seed: string; profile: s
         ))}
       </ul>
 
-      <p className="border-t border-line px-4 py-3 font-mono text-[10.5px] leading-relaxed text-dim">
+      {/* break-words because the anchor is one unbreakable 24-character token,
+          and on a phone it is wider than the column it sits in. */}
+      <p className="break-words border-t border-line px-4 py-3 font-mono text-[10.5px] leading-relaxed text-dim">
         Relative windows are anchored to {set.stats.anchor}, not to the clock, so an expected answer
         that is right today is still right next month. Categories:{" "}
         {(Object.keys(DOT) as QuirkCategory[]).map((category, i) => (

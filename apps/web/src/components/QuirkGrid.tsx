@@ -3,28 +3,24 @@
 import { useState } from "react";
 import { Button } from "./ui";
 import {
-  CATEGORY_LABELS,
-  CATEGORY_ORDER,
-  PROBLEMS,
-  appliesTo,
-  appliesToProfile,
-  getFormat,
-  getProfile,
-  type FormatId,
-  type ProblemCategory,
+  EXCLUSIVE_QUIRKS,
+  QUIRKS,
+  QUIRK_CATEGORY_LABELS,
+  QUIRK_CATEGORY_ORDER,
+  getSubject,
+  type QuirkCategory,
 } from "nullisland-core";
 
-// Written out rather than built from the category id so Tailwind's scanner
-// actually sees every class name.
-const DOT: Record<ProblemCategory, string> = {
-  coordinates: "bg-cat-coordinates",
-  geometry: "bg-cat-geometry",
-  attributes: "bg-cat-attributes",
-  structure: "bg-cat-structure",
+// Written out rather than built from the id so Tailwind's scanner sees them.
+const DOT: Record<QuirkCategory, string> = {
+  place: "bg-cat-coordinates",
+  time: "bg-cat-structure",
+  phrasing: "bg-cat-attributes",
   encoding: "bg-cat-encoding",
+  adversarial: "bg-cat-geometry",
 };
 
-type Filter = ProblemCategory | "all";
+type Filter = QuirkCategory | "all";
 
 function FilterPill({
   label,
@@ -58,72 +54,67 @@ function FilterPill({
   );
 }
 
-export function ProblemGrid({
+/**
+ * The query catalogue, selectable — the search half's answer to the problem
+ * grid.
+ *
+ * One difference matters enough to say out loud on screen: an empty selection
+ * here does not mean an empty set. With nothing ticked the whole catalogue is
+ * dealt out one quirk per term, which is the useful default. "Clean" is how you
+ * ask for none, and it is a separate state rather than the absence of one.
+ */
+export function QuirkGrid({
   selected,
-  format,
+  clean,
   profile,
   onToggle,
+  onClean,
+  onSpread,
   onPickRandom,
-  onSelectAll,
-  onClear,
-  onPickTypical,
 }: {
   selected: string[];
-  format: FormatId;
+  clean: boolean;
   profile: string;
   onToggle: (id: string) => void;
+  onClean: () => void;
+  onSpread: () => void;
   onPickRandom: (howMany: number) => void;
-  onSelectAll: () => void;
-  onClear: () => void;
-  onPickTypical: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expanded, setExpanded] = useState(false);
   const chosen = new Set(selected);
-  const formatLabel = getFormat(format).label;
-  const dataType = getProfile(profile);
+  const subject = getSubject(profile);
 
-  // The catalogue is the general problems plus the ones this data type brings
-  // with it. Another type's problems are not hidden so much as absent: they do
-  // not exist in this data.
-  const catalogue = PROBLEMS.filter((p) => appliesToProfile(p, profile));
-  const visible = catalogue.filter((p) => filter === "all" || p.category === filter);
-  // Seventy-two tiles is the tallest thing on the page by a wide margin, and
-  // most of the time you are looking at the handful you ticked. Closed, the
-  // grid shows those; the filter pills stay, so browsing the catalogue is one
-  // click away rather than hidden. With nothing selected there is nothing to
-  // show, so it opens itself rather than rendering a void.
+  const visible = QUIRKS.filter((q) => filter === "all" || q.category === filter);
+  // Closed, the grid shows what is actually selected. With nothing selected
+  // there is nothing to show, so it opens itself rather than rendering a void.
   const showAll = expanded || filter !== "all";
-  const shown = showAll ? visible : visible.filter((p) => chosen.has(p.id));
+  const shown = showAll ? visible : visible.filter((q) => chosen.has(q.id));
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">Problems</h2>
+          <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">Quirks</h2>
           <span className="rounded-full bg-paper px-2 py-0.5 font-mono text-[11px] text-muted">
-            {selected.length}/{catalogue.length}
+            {clean ? "none" : selected.length ? `${selected.length}/${QUIRKS.length}` : `all ${QUIRKS.length}`}
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {/* First, and a real choice rather than a way to undo the others: a
-              file with nothing wrong with it is the control case, and the thing
-              to reach for before asking how a reader handles bad data. */}
           <Button
-            onClick={onClear}
-            active={selected.length === 0}
-            title="A valid file with nothing wrong with it — the control case"
+            onClick={onClean}
+            active={clean}
+            title="Well-formed queries with nothing hard about them — the control set"
           >
             Clean
           </Button>
-          {dataType.apt.length > 0 && (
-            <Button
-              onClick={onPickTypical}
-              title={`What ${dataType.label} files actually arrive with`}
-            >
-              Typical for {dataType.label}
-            </Button>
-          )}
+          <Button
+            onClick={onSpread}
+            active={!clean && selected.length === 0}
+            title="Deal the whole catalogue out, one quirk per term"
+          >
+            One of everything
+          </Button>
           <Button onClick={() => onPickRandom(1)} title="Pick exactly one at random">
             Random 1
           </Button>
@@ -133,35 +124,39 @@ export function ProblemGrid({
           >
             Random mix
           </Button>
-          <Button
-            onClick={onSelectAll}
-            title="Everything this format supports, except the empty-result case"
-          >
-            All
-          </Button>
         </div>
       </div>
 
-      {selected.length === 0 && (
+      {clean ? (
         <p className="mb-4 rounded-xl border border-mint-deep bg-mint px-3.5 py-2.5 text-[12px] leading-relaxed text-mint-ink">
-          <span className="font-semibold text-ink">Nothing selected, so the file is clean.</span>{" "}
-          A valid {formatLabel} carrying a real {dataType.label} schema, checked before it is handed
-          over — upload it to prove the happy path works, then tick a problem to see what breaks.
+          <span className="font-semibold text-ink">Nothing selected, so every query is clean.</span>{" "}
+          One unambiguous place, a window that resolves, one correct answer. Run these before the
+          awkward ones — a search that fumbles them will fail every quirk for a reason that has
+          nothing to do with the quirk.
         </p>
-      )}
+      ) : selected.length === 0 ? (
+        <p className="mb-4 rounded-xl border border-line-strong bg-paper px-3.5 py-2.5 text-[12px] leading-relaxed text-muted">
+          <span className="font-semibold text-ink">
+            Nothing ticked, so the whole catalogue is dealt out — one quirk per term.
+          </span>{" "}
+          That is the useful default: a set of {QUIRKS.length} is {QUIRKS.length} different problems
+          rather than {QUIRKS.length} rolls of the same dice. Tick some to narrow it, or press Clean
+          for queries about {subject.plural} with nothing wrong with them.
+        </p>
+      ) : null}
 
       <div className="mb-4 flex flex-wrap gap-1.5">
         <FilterPill
           label="All"
-          count={catalogue.length}
+          count={QUIRKS.length}
           active={filter === "all"}
           onClick={() => setFilter("all")}
         />
-        {CATEGORY_ORDER.map((category) => (
+        {QUIRK_CATEGORY_ORDER.map((category) => (
           <FilterPill
             key={category}
-            label={CATEGORY_LABELS[category]}
-            count={catalogue.filter((p) => p.category === category).length}
+            label={QUIRK_CATEGORY_LABELS[category]}
+            count={QUIRKS.filter((q) => q.category === category).length}
             dot={DOT[category]}
             active={filter === category}
             onClick={() => setFilter(category)}
@@ -169,7 +164,7 @@ export function ProblemGrid({
         ))}
         {!showAll && (
           <Button onClick={() => setExpanded(true)} className="ml-auto">
-            {selected.length ? "Show all" : "Browse all"} {catalogue.length}
+            {selected.length ? "Show all" : "Browse all"} {QUIRKS.length}
           </Button>
         )}
         {expanded && filter === "all" && (
@@ -180,23 +175,22 @@ export function ProblemGrid({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {shown.map((problem) => {
-          const usable = appliesTo(problem, format);
-          const active = chosen.has(problem.id);
+        {shown.map((quirk) => {
+          const active = chosen.has(quirk.id);
           return (
             <button
-              key={problem.id}
+              key={quirk.id}
               type="button"
               role="checkbox"
               aria-checked={active}
-              onClick={() => onToggle(problem.id)}
-              title={usable ? undefined : `${formatLabel} can't express this — it will be skipped.`}
+              onClick={() => onToggle(quirk.id)}
+              title={quirk.example}
               className={[
                 "rounded-2xl border p-3 text-left transition-colors",
                 active
                   ? "border-ink bg-mint"
                   : "border-line bg-card hover:border-line-strong hover:bg-paper",
-                usable ? "" : "opacity-50",
+                clean ? "opacity-50" : "",
               ].join(" ")}
             >
               <span className="flex items-start gap-2.5">
@@ -211,19 +205,24 @@ export function ProblemGrid({
                 </span>
                 <span className="min-w-0">
                   <span className="flex items-center gap-1.5">
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[problem.category]}`} aria-hidden />
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[quirk.category]}`} aria-hidden />
                     <span className="text-[12.5px] font-semibold tracking-tight text-ink">
-                      {problem.label}
+                      {quirk.label}
                     </span>
                   </span>
                   <span className="mt-1 block text-[11.5px] leading-snug text-muted">
-                    {problem.blurb}
+                    {quirk.blurb}
                   </span>
                   <span className="mt-1.5 flex flex-wrap gap-x-2 font-mono text-[10px]">
-                    {problem.profiles && (
-                      <span className="text-mint-ink">{dataType.label} only</span>
+                    {/* What a query has to already contain before this means
+                        anything — the direct analogue of a format that cannot
+                        express a problem. */}
+                    {quirk.needs !== "none" && (
+                      <span className="text-dim">needs a {quirk.needs.replace(/s$/, "")}</span>
                     )}
-                    {!usable && <span className="text-dim">not in {formatLabel}</span>}
+                    {EXCLUSIVE_QUIRKS.includes(quirk.id) && (
+                      <span className="text-mint-ink">stands alone</span>
+                    )}
                   </span>
                 </span>
               </span>

@@ -19,7 +19,8 @@ import {
 } from "../src/profiles/index";
 import { randomSeed } from "../src/rng";
 import { SEED_WORDS } from "../src/seed-words";
-import { decodeConfig, encodeConfig } from "../src/share";
+import { decodeApp, decodeConfig, encodeApp, encodeConfig } from "../src/share";
+import type { AppConfig, TermsConfig } from "../src/share";
 import { generateTerms, MAX_TERMS } from "../src/search/terms";
 import { inspectTerms } from "../src/search/clean";
 import { QUIRKS, EXCLUSIVE_QUIRKS } from "../src/search/quirks";
@@ -1023,6 +1024,80 @@ console.log("\n9. the reproducibility promise");
     const b = generate({ ...config, ...round });
     ok("an over-long seed round-trips through its link", a.data === b.data);
     ok("the link carries the canonical seed", a.filename.includes(String(round.seed)));
+  }
+
+  /* ── the search half travels in the same link ─────────────────────────── */
+  {
+    const termsOf = (over: Partial<TermsConfig> = {}): TermsConfig => ({
+      count: 43,
+      quirks: [],
+      intensity: 0.15,
+      near: "anywhere",
+      clean: false,
+      format: "jsonl",
+      ...over,
+    });
+    const appOf = (over: Partial<AppConfig> = {}): AppConfig => ({
+      mode: "files",
+      file: opts(),
+      terms: termsOf(),
+      ...over,
+    });
+
+    let diverged = 0;
+    const cases: AppConfig[] = [
+      appOf(),
+      appOf({ mode: "terms" }),
+      appOf({ terms: termsOf({ clean: true }) }),
+      appOf({ mode: "terms", terms: termsOf({ count: 120, near: "tokyo", format: "md" }) }),
+      appOf({ mode: "terms", terms: termsOf({ quirks: ["misspelled-place", "ambiguous-place"] }) }),
+      appOf({ terms: termsOf({ count: 0, intensity: 1, near: "nz", format: "csv" }) }),
+      appOf({ mode: "terms", file: opts({ format: "shapefile", profile: "maritime-ais" }) }),
+    ];
+    for (const config of cases) {
+      const round = decodeApp("#" + encodeApp(config));
+      const rebuilt: AppConfig = {
+        mode: round.mode ?? "files",
+        file: { ...config.file, ...round.file },
+        terms: { ...termsOf(), ...round.terms },
+      };
+      if (JSON.stringify(rebuilt) !== JSON.stringify(config)) {
+        diverged++;
+        console.log(`  detail: ${JSON.stringify(config)} -> ${JSON.stringify(rebuilt)}`);
+      }
+    }
+    ok("both halves of the app rebuild from one link", diverged === 0, `${diverged} of ${cases.length}`);
+
+    // A link made before the search half existed has to keep meaning what it
+    // meant: the file settings it carries, and the file half of the app.
+    const legacy = "#f=csv&n=250&g=polygon&r=lisbon&i=40&s=old-link-seed&p=coincident";
+    const old = decodeApp(legacy);
+    ok("a link from before search terms still decodes", old.file.format === "csv" && old.file.count === 250,
+      JSON.stringify(old.file));
+    ok("such a link carries no mode, so the app keeps its own", old.mode === undefined);
+    ok("such a link carries no term settings", old.terms === undefined);
+    ok("the file half of a link is untouched by the search half",
+      encodeApp(appOf()).startsWith(encodeConfig(opts())),
+      encodeApp(appOf()).slice(0, 80));
+
+    // Fractions are quantised for the file half already; the term intensity
+    // travels the same narrow channel and has to survive it too.
+    let fractions = 0;
+    for (let k = 0; k <= 100; k++) {
+      const config = appOf({ terms: termsOf({ intensity: k / 100 }) });
+      const round = decodeApp("#" + encodeApp(config));
+      if (Math.abs((round.terms?.intensity ?? -1) - k / 100) > 1e-9) fractions++;
+    }
+    ok("every term intensity survives the link", fractions === 0, `${fractions} of 101`);
+
+    // Unknown ids are dropped rather than carried through to the generator,
+    // exactly as they are for problems.
+    const junk = decodeApp("#tq=misspelled-place.not-a-quirk&tr=atlantis&tf=nonsense");
+    ok("a link drops quirk ids that are not in the catalogue",
+      JSON.stringify(junk.terms?.quirks) === JSON.stringify(["misspelled-place"]),
+      JSON.stringify(junk.terms?.quirks));
+    ok("a link drops a place that is not in the gazetteer", junk.terms?.near === undefined);
+    ok("a link drops a term format that does not exist", junk.terms?.format === undefined);
   }
 
   // Numbers reach file content — a package README, the written context — so the

@@ -8,7 +8,7 @@ const linkBase =
 
 export function Contribute() {
   return (
-    <section className="mt-8 rounded-[18px] bg-mint p-4 sm:p-5">
+    <section className="rounded-[18px] bg-mint p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
         <div className="max-w-xl">
           <h2 className="text-[15px] font-semibold tracking-tight text-ink">

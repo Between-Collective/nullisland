@@ -114,7 +114,8 @@ export type { CleanCheck, CleanReport } from "./clean";
 export { formatBytes } from "./format";
 
 /* ── reproducing it ──────────────────────────────────────────────────────── */
-export { decodeConfig, encodeConfig } from "./share";
+export { decodeApp, decodeConfig, encodeApp, encodeConfig } from "./share";
+export type { AppConfig, AppMode, DecodedApp, TermsConfig } from "./share";
 export { normaliseSeed, randomSeed, Rng } from "./rng";
 
 /* ── where it lives ──────────────────────────────────────────────────────── */

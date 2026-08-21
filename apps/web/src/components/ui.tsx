@@ -205,3 +205,84 @@ export function CardTitle({ children, aside }: { children: ReactNode; aside?: Re
     </div>
   );
 }
+
+
+/**
+ * A section that starts closed.
+ *
+ * The manual is worth having on the page and is read once. Left expanded it was
+ * a third of the scroll height, sitting between the reader and nothing —
+ * everything below it is footer. Closed it is one line, and the summary still
+ * says what is inside, so it stays findable and stays indexable.
+ */
+export function Disclosure({
+  title,
+  hint,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  /** The one-line reason to open it. */
+  hint?: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details className="group mt-2 overflow-hidden rounded-2xl border border-line bg-card" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-baseline gap-3 px-4 py-3.5 hover:bg-paper [&::-webkit-details-marker]:hidden">
+        <span
+          aria-hidden
+          className="mt-px shrink-0 font-mono text-[11px] text-dim transition-transform group-open:rotate-90"
+        >
+          ▸
+        </span>
+        <span className="text-[13px] font-semibold tracking-tight text-ink">{title}</span>
+        {hint && <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">{hint}</span>}
+      </summary>
+      <div className="border-t border-line px-4 pb-4 pt-4">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * The two halves of the app. A tab rather than a link because the whole
+ * configuration lives in the URL hash — a real navigation would throw away the
+ * fixture on screen, which is the one thing this page must never do.
+ */
+export function ModeTab({
+  children,
+  active,
+  onClick,
+  count,
+}: {
+  children: ReactNode;
+  active: boolean;
+  onClick: () => void;
+  count: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={[
+        "-mb-px flex shrink-0 items-baseline gap-2 whitespace-nowrap border-b-2 px-1 pb-3 pt-1 text-[13px] font-semibold tracking-tight transition-colors",
+        active
+          ? "border-ink text-ink"
+          : "border-transparent text-muted hover:text-ink",
+      ].join(" ")}
+    >
+      {children}
+      {/* The catalogue sizes are worth knowing and are the first thing to go on
+          a phone, where they would wrap and push the other tab off-screen. */}
+      <span
+        className={`hidden font-mono text-[10.5px] font-normal sm:inline ${
+          active ? "text-dim" : "text-dim/70"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}

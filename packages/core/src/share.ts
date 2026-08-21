@@ -4,6 +4,10 @@ import { PROBLEMS } from "./problems";
 import { normaliseSeed } from "./rng";
 import { DEFAULT_PROFILE, PROFILES } from "./profiles/index";
 import { REGIONS } from "./regions";
+import { PLACES } from "./search/places";
+import { QUIRKS } from "./search/quirks";
+import { TERM_FORMATS } from "./search/write";
+import type { TermFormatId } from "./search/write";
 import type { BoundaryId, FormatId, GenerateOptions, ShapeId } from "./types";
 
 /**
@@ -94,5 +98,110 @@ export function decodeConfig(hash: string): Partial<GenerateOptions> {
     out.problems = problems.split(".").filter((id) => known.has(id));
   }
 
+  return out;
+}
+
+
+/* ── the other half of the app ───────────────────────────────────────────── */
+
+/**
+ * Which generator the app is showing.
+ *
+ * Omitted from a link rather than written as "files", so every link made before
+ * search terms existed still decodes to the half it was made in.
+ */
+export type AppMode = "files" | "terms";
+
+/**
+ * What the search half holds, minus the two things it shares with the file
+ * half: the seed, and the data type the subject noun comes from. Those are one
+ * setting each for the whole app, so they are carried once.
+ */
+export interface TermsConfig {
+  count: number;
+  quirks: string[];
+  intensity: number;
+  near: string;
+  clean: boolean;
+  format: TermFormatId;
+}
+
+/** Everything on screen, in both halves. */
+export interface AppConfig {
+  mode: AppMode;
+  file: GenerateOptions;
+  terms: TermsConfig;
+}
+
+/**
+ * The whole app as a link.
+ *
+ * The file half keeps the keys it has always had, so a link from before this
+ * existed decodes exactly as it used to. The search half is namespaced under
+ * `t`, and the mode under `m` — both absent by default, so the shortest link
+ * is still a file link.
+ */
+export function encodeApp(config: AppConfig): string {
+  const params = new URLSearchParams(encodeConfig(config.file));
+  if (config.mode === "terms") params.set("m", "t");
+
+  const { terms } = config;
+  params.set("tn", String(terms.count));
+  params.set("ti", String(Math.round(terms.intensity * 100)));
+  if (terms.near !== "anywhere") params.set("tr", terms.near);
+  if (terms.format !== "jsonl") params.set("tf", terms.format);
+  // A control set and an empty selection are different things — no quirks means
+  // "deal the whole catalogue out", and clean means "apply none of it" — so the
+  // flag is carried rather than inferred from the selection being empty.
+  if (terms.clean) params.set("tc", "1");
+  if (terms.quirks.length) params.set("tq", terms.quirks.join("."));
+  return params.toString();
+}
+
+/**
+ * What a link actually carries: some of each half, and possibly neither.
+ *
+ * Partial all the way down on purpose — an absent key means "not specified"
+ * rather than a default, so a link that names only a seed leaves everything
+ * else exactly as the app already had it.
+ */
+export interface DecodedApp {
+  mode?: AppMode;
+  file: Partial<GenerateOptions>;
+  terms?: Partial<TermsConfig>;
+}
+
+export function decodeApp(hash: string): DecodedApp {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const out: DecodedApp = { file: decodeConfig(hash) };
+
+  if (params.get("m") === "t") out.mode = "terms";
+  else if (params.has("m")) out.mode = "files";
+
+  const terms: Partial<TermsConfig> = {};
+
+  const count = Number(params.get("tn"));
+  if (params.has("tn") && Number.isFinite(count) && count >= 0) terms.count = Math.floor(count);
+
+  const intensity = Number(params.get("ti"));
+  if (params.has("ti") && Number.isFinite(intensity)) {
+    terms.intensity = Math.max(0, Math.min(1, intensity / 100));
+  }
+
+  const near = params.get("tr");
+  if (near && (near === "anywhere" || PLACES.some((p) => p.id === near))) terms.near = near;
+
+  const format = params.get("tf");
+  if (format && TERM_FORMATS.some((f) => f.id === format)) terms.format = format as TermFormatId;
+
+  if (params.has("tc")) terms.clean = params.get("tc") === "1";
+
+  const quirks = params.get("tq");
+  if (quirks !== null) {
+    const known = new Set(QUIRKS.map((q) => q.id));
+    terms.quirks = quirks.split(".").filter((id) => known.has(id));
+  }
+
+  if (Object.keys(terms).length) out.terms = terms;
   return out;
 }

@@ -1,4 +1,4 @@
-import { FORMATS, PROBLEMS, PROFILES, QUIRKS } from "nullisland-core";
+import { FORMATS, PROBLEMS, QUIRKS } from "nullisland-core";
 
 /**
  * The manual, on the page rather than in a wiki nobody opens.
@@ -135,15 +135,9 @@ const STEPS: Step[] = [
 
 export function HowToUse() {
   return (
-    <section className="mt-8">
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">How to use this</h2>
-        <p className="text-[12.5px] text-muted">
-          {PROFILES.length - 1} data types · {FORMATS.length} formats · {PROBLEMS.length} problems ·{" "}
-          {QUIRKS.length} search quirks · everything in the browser
-        </p>
-      </div>
-
+    <section>
+      {/* No heading of its own: this sits inside a disclosure whose summary
+          already names it, and two titles in a row read as a mistake. */}
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {STEPS.map((step) => (
           <div key={step.title} className="rounded-2xl border border-line bg-card p-4">
@@ -155,7 +149,7 @@ export function HowToUse() {
 
       {/* The files are hostile on purpose, and two of those ways are hostile to
           the person holding them rather than to their parser. */}
-      <div className="mt-2 rounded-2xl border border-line bg-paper p-4">
+      <div className="mt-2 rounded-2xl border border-cat-encoding/30 bg-paper p-4">
         <h3 className="flex items-center gap-2 text-[12.5px] font-semibold tracking-tight text-ink">
           <span className="h-1.5 w-1.5 rounded-full bg-cat-encoding" aria-hidden />
           Handle the output with care

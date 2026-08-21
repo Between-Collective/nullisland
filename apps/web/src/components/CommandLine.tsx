@@ -145,12 +145,9 @@ function CommandBlock({ command, label }: { command: string; label: string }) {
 
 export function CommandLine() {
   return (
-    <section className="mt-8 overflow-hidden rounded-[18px] bg-ink p-4 sm:p-5">
+    <section className="overflow-hidden rounded-[18px] bg-ink p-4 sm:p-5">
       <div className="max-w-3xl">
-        <h2 className="text-[19px] font-bold tracking-[-0.02em] text-white">
-          Generating a lot of them
-        </h2>
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-white/55">
+        <p className="text-[12.5px] leading-relaxed text-white/55">
           One file at a time is what the page above is for. A fixture for every data type, or a
           matrix of every data type in every format, is a loop — so there is a command line, running
           the same generator from the same seeds. A file you build by clicking and a file you build

@@ -26,9 +26,9 @@ export function LogoMark({ className = "" }: { className?: string }) {
   );
 }
 
-export function Wordmark() {
+export function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <div className="flex items-center gap-2.5">
+    <div className={`flex items-center gap-2.5 ${className}`}>
       <LogoMark className="h-7 w-7 text-ink" />
       <span className="text-[17px] font-bold tracking-[-0.03em] text-ink">Null Island</span>
     </div>
