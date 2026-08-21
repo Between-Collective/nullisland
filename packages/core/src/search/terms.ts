@@ -149,6 +149,13 @@ export interface TermExpectation {
    */
   empty: boolean;
   /**
+   * The query says "here" and means it. There is no answer without the caller's
+   * own position — a third state, since the place is neither resolved nor
+   * nonexistent — so a search must ask for a location, or use one it was given,
+   * and never quietly centre on a default nobody asked about.
+   */
+  needsLocation: boolean;
+  /**
    * The envelope round the places spans more than half the globe, so the
    * smaller area joining them runs across the antimeridian. A filter written
    * as minLon < x < maxLon over this envelope selects nearly everything.
@@ -265,6 +272,11 @@ interface PlanPlace {
   qualifier: Place | null;
   /** A container written out beside it that is wrong: "Kyoto, China". */
   wrongQualifier: string | null;
+  /**
+   * "near here", "around me". The words are the whole phrase, preposition and
+   * all, and they resolve to nowhere without the caller's own position.
+   */
+  deictic: boolean;
   note?: string;
 }
 
@@ -311,6 +323,7 @@ function slotFor(place: Place): PlanPlace {
     candidates: [place, ...(place.ambiguousWith ?? []).map(getPlace).filter((p): p is Place => !!p)],
     qualifier: null,
     wrongQualifier: null,
+    deictic: false,
     note: place.note,
   };
 }
@@ -498,7 +511,34 @@ const ASKED_TOGETHER: string[][] = [
   ["cadastral-parcels", "building-footprints", "zoning-land-use", "indoor-bim", "utility-networks"],
   ["satellite-scene-footprints", "elevation-contours", "weather-observations", "land-cover-ndvi", "natural-hazard-zones"],
   ["census-boundary", "health-epidemiology", "crime-incident", "geosocial-checkins", "poi-venues", "trade-area-catchment", "psychographics-spending"],
+
+  // Pairs that cross those lines, and are asked for constantly — "cases and
+  // mobile devices near here" is contact tracing, not a category error. Worth
+  // keeping as named pairs rather than opening the pool up: these are the ones
+  // people really put together, and they are the hardest kind of query to
+  // answer because the two halves usually live in different stores.
+  ["health-epidemiology", "mobile-location-pings"],
+  ["health-epidemiology", "census-boundary", "poi-venues"],
+  ["crime-incident", "mobile-location-pings", "census-boundary"],
+  ["mobile-location-pings", "poi-venues", "geosocial-checkins"],
+  ["fleet-telematics", "weather-observations"],
+  ["flight-adsb", "weather-observations"],
+  ["maritime-ais", "weather-observations", "natural-hazard-zones"],
+  ["cadastral-parcels", "natural-hazard-zones"],
+  ["building-footprints", "natural-hazard-zones", "census-boundary"],
+  ["trade-area-catchment", "poi-venues", "psychographics-spending", "mobile-location-pings"],
+  ["transit-gtfs", "poi-venues", "census-boundary"],
 ];
+
+/** Everything named alongside this kind, across every group that holds it. */
+function kinFor(profile: string): string[] {
+  const out = new Set<string>();
+  for (const group of ASKED_TOGETHER) {
+    if (!group.includes(profile)) continue;
+    for (const id of group) if (id !== profile) out.add(id);
+  }
+  return [...out];
+}
 
 /** Rewrites the subject phrase from whatever the subjects now hold. */
 function retypeSubjects(plan: Plan, rng: Rng): void {
@@ -646,6 +686,25 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
       return "\"Mobile devices in Mobile\" — the same word is the kind of thing and the place, in one sentence. One of the two occurrences is a place and the other is not, and nothing but position tells them apart.";
     }
     return `"${plan.places[0].typed}" is a real place and an ordinary English word. A matcher scanning free text finds it in sentences that are not about geography.`;
+  },
+
+  here: (plan, rng) => {
+    const slot = plan.places[0];
+    if (!slot) return null;
+    slot.place = null;
+    slot.candidates = [];
+    slot.qualifier = null;
+    slot.note = undefined;
+    slot.deictic = true;
+    slot.typed = rng.pick([
+      "near here",
+      "around me",
+      "nearby",
+      "near my location",
+      "in this area",
+      "close to me",
+    ]);
+    return `"${slot.typed}" resolves to nowhere on its own. The answer needs the caller's position — ask for it, or use the one you were given, and say which. Centring on a default is how a user in Lisbon gets results for London.`;
   },
 
   "unknown-place": (plan, rng) => {
@@ -812,7 +871,7 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     // freely across it would produce "households, aircraft and tiles", which is
     // not a query anyone has typed and teaches nothing that a real one doesn't.
     const asked = (opts.profiles ?? []).filter((id) => SUBJECTS[id]);
-    const group = asked.length > 1 ? asked : ASKED_TOGETHER.find((g) => g.includes(first.profile)) ?? [];
+    const group = asked.length > 1 ? asked : kinFor(first.profile);
     const kin = PROFILES.filter((p) => group.includes(p.id) && !used.has(p.id) && SUBJECTS[p.id]);
     const rest = PROFILES.filter((p) => !used.has(p.id) && SUBJECTS[p.id]);
     const pool = kin.length ? kin : rest;
@@ -1118,6 +1177,8 @@ const TEXT_QUIRKS: Record<string, TextQuirk> = {
 /* ── rendering ───────────────────────────────────────────────────────────── */
 
 function preposition(slot: PlanPlace, rng: Rng): string {
+  // A deictic phrase carries its own: "near here", not "in near here".
+  if (slot.deictic) return "";
   if (!slot.place) return "in";
   if (/^-?\d/.test(slot.typed)) return "near";
   if (slot.place.kind === "venue") return rng.pick(["at", "in", "in"]);
@@ -1152,9 +1213,11 @@ function placePhrase(plan: Plan, rng: Rng): string {
       .join(" ");
   }
 
-  const lead = included.length ? `${preposition(included[0].slot, rng)} ${list(included)}` : "";
+  const lead = included.length
+    ? `${preposition(included[0].slot, rng)} ${list(included)}`.trim()
+    : "";
   if (!excluded.length) return lead;
-  const tail = `not ${preposition(excluded[0].slot, rng)} ${list(excluded)}`;
+  const tail = `not ${preposition(excluded[0].slot, rng)} ${list(excluded)}`.replace(/\s{2,}/g, " ");
   return lead ? `${lead} but ${tail}` : tail;
 }
 
@@ -1252,11 +1315,15 @@ function expectation(plan: Plan, profile: string): TermExpectation {
   const ambiguous = places.some((p) => p.candidates.length > 1);
   // A place that resolves to nothing makes the query unanswerable; so does a
   // window that cannot contain anything. Both are "zero rows, and here is why".
-  const unresolved = places.length > 0 && places.every((p) => p.candidates.length === 0);
+  const unresolved =
+    places.length > 0 &&
+    places.every((p) => p.candidates.length === 0) &&
+    !plan.places.some((s) => s.deictic);
   const empty = unresolved || plan.time.empty === true;
   // A single box wider than 180° is a box that has been written the wrong way
   // round about the dateline, and a union that wide has been stitched across it.
   const antimeridian = !!bbox && bbox[2] - bbox[0] > 180;
+  const needsLocation = plan.places.some((s) => s.deictic);
 
   return {
     intent: plan.intent,
@@ -1273,6 +1340,7 @@ function expectation(plan: Plan, profile: string): TermExpectation {
     resolvable,
     ambiguous,
     empty,
+    needsLocation,
     antimeridian,
   };
 }

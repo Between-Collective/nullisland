@@ -106,6 +106,9 @@ export type {
   TimeWindow,
 } from "./search/index";
 
+export { buildCatalogue, writeCatalogue } from "./catalogue";
+export type { Catalogue, CatalogueDataType } from "./catalogue";
+
 /* ── describing the result ───────────────────────────────────────────────── */
 export { buildContext, contextToText } from "./context";
 export type { ContextBlock } from "./context";

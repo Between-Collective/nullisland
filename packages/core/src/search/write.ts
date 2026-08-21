@@ -97,6 +97,7 @@ function termToJson(term: SearchTerm): Record<string, unknown> {
       resolvable: term.expect.resolvable,
       ambiguous: term.expect.ambiguous,
       empty: term.expect.empty,
+      needsLocation: term.expect.needsLocation,
       antimeridian: term.expect.antimeridian,
       bbox: term.expect.bbox,
       places: term.expect.places.map((p) => ({
@@ -166,6 +167,7 @@ const CSV_HEADER = [
   "resolvable",
   "ambiguous",
   "expect_empty",
+  "needs_location",
   "notes",
 ];
 
@@ -200,6 +202,7 @@ function writeCsv(set: TermSet): string {
         term.expect.resolvable,
         term.expect.ambiguous,
         term.expect.empty,
+        term.expect.needsLocation,
         term.notes.join(" "),
       ]
         .map(cell)
@@ -271,6 +274,12 @@ function bullet(term: SearchTerm): string[] {
         ? `- \`${time.expression}\` → ${time.startsAt} to ${time.endsAt}` +
             (time.alternate ? `, or ${time.alternate.startsAt} to ${time.alternate.endsAt} ${time.alternate.why}` : "")
         : `- \`${time.expression}\` bounds nothing. Any window applied here was invented.`,
+    );
+  }
+  if (term.expect.needsLocation) {
+    out.push(
+      "- **No answer without the caller's position.** Ask for it, or use the one you were given — " +
+        "and say which. A silent default centres a user in Lisbon on London.",
     );
   }
   if (term.expect.empty) {

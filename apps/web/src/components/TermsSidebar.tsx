@@ -1,6 +1,7 @@
 "use client";
 
-import { Field, Segmented, type Option } from "./ui";
+import { Button, Field, Segmented, type Option } from "./ui";
+import { downloadFile } from "@/lib/download";
 import {
   DEFAULT_PROFILE,
   FAMILIES,
@@ -8,6 +9,7 @@ import {
   QUIRKS,
   TERM_FORMATS,
   getPlace,
+  writeCatalogue,
   getSubject,
   profilesInFamily,
   type TermFormatId,
@@ -181,6 +183,18 @@ export function TermsSidebar({
             the one where an empty result looks like a correct answer.
           </p>
         )}
+
+        {/* What the kinds above actually are, as data. The words a user types
+            are never the schema's, so the mapping from one to the other is the
+            thing a classifier needs — and the thing that has only ever lived
+            inside the generator. */}
+        <Button
+          onClick={() => downloadFile({ ...writeCatalogue(), bytes: 0 })}
+          className="w-full justify-center"
+          title="Every data type, its schema noun, and the words people use for it — plus the quirk and problem catalogues and the gazetteer"
+        >
+          Download catalogue .json
+        </Button>
       </div>
 
       <div className="space-y-5 border-t border-line pt-5">
@@ -209,7 +223,9 @@ export function TermsSidebar({
         <p className="text-[11.5px] leading-relaxed text-muted">
           {terms.clean
             ? "Nothing is applied to a control set, so this has nothing to turn up."
-            : "Every term gets one quirk. This is how often it picks up a second on top."}
+            : terms.quirks.length > 1
+              ? `You picked ${terms.quirks.length}. This is how often one term carries more than one of them — at 100% every term carries all of them at once.`
+              : "Every term gets one quirk. This is how often it picks up a second on top."}
         </p>
       </div>
 

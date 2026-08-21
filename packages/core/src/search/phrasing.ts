@@ -69,7 +69,7 @@ export const SUBJECTS: Record<string, Subject> = {
   "cadastral-parcels": { singular: "parcel", plural: "parcels", owned: false, aliases: ["lots", "plots", "titles", "land parcels"] },
   "building-footprints": { singular: "building", plural: "buildings", owned: false, aliases: ["footprints", "structures"] },
   "zoning-land-use": { singular: "zone", plural: "zones", owned: false, aliases: ["districts", "land use"] },
-  "indoor-bim": { singular: "asset", plural: "assets", owned: true, aliases: ["rooms", "spaces"] },
+  "indoor-bim": { singular: "room", plural: "rooms", owned: false, aliases: ["spaces", "floors", "indoor assets"] },
   "utility-networks": { singular: "asset", plural: "assets", owned: true, aliases: ["mains", "pipes", "the network"] },
   "satellite-scene-footprints": { singular: "scene", plural: "scenes", owned: false, aliases: ["scenes", "imagery", "captures"] },
   "elevation-contours": { singular: "contour", plural: "contours", owned: false, aliases: ["isolines", "elevation"] },

@@ -206,7 +206,7 @@ npx nullisland --terms 46 --type mobile-location-pings --out test/fixtures/searc
 
 The catalogue has **46 quirks** across five categories, and with none selected they are dealt out one per term — so a set of 46 is 46 different problems rather than 46 rolls of the same dice.
 
-- **Place** — a misspelled venue, a name that means two cities, an endonym, an abbreviation, a former name, a place that does not exist, a whole country whose real bounding box is not the one everybody draws.
+- **Place** — a misspelled venue, a name that means two cities, an endonym, an abbreviation, a former name, a place that does not exist, a whole country whose real bounding box is not the one everybody draws, and *near here* — which resolves to nowhere without the caller's own position.
 - **Time** — *last week* (the previous calendar week, or a rolling seven days?), `03/04/2024` (both readings are valid dates, weeks apart), *next week* for historic positions, a range with its ends the wrong way round.
 - **Phrasing** — no place at all, a negation, one area minus another, keywords with no preposition to hang the place on, a question, politeness, another language entirely. And what the query is *about*: several kinds of thing at once, the user's word rather than your schema's, or no kind at all.
 - **Encoding** — curly quotes out of a word processor, a non-breaking space inside *New York*, a zero-width space, a Cyrillic `о` in *Tokyo*, UTF-8 read as Latin-1.
@@ -266,6 +266,17 @@ Left unspecified, kinds are drawn from the ones people name in the same breath �
 
 `resolvesTo` is null in exactly the two cases where no single answer is correct — the name belongs to nowhere, or to more than one somewhere — because a search that returns one result confidently is the failure this is here to catch, and an expectation that named a winner would contradict its own note.
 
+### What kinds there are, as data
+
+A user types *planes*, *boats*, *phones*, *lorries*. Your schema says aircraft, vessels, devices, vehicles. That mapping only ever lived inside the generator, so there is a **catalogue** — one JSON document with every data type, its own noun, every word people use for it, its columns and its geometry, plus the quirk and problem catalogues and the whole gazetteer. It is a download button in the search sidebar, and:
+
+```bash
+nullisland --list all --json > catalogue.json
+curl https://nullisland.app/api/terms?list=all
+```
+
+No word in it points at two data types — asserted, because ambiguity in the one direction it exists to serve would make it useless.
+
 ### A corpus, over and over
 
 For a harness that wants a broad mix, runs against it, and asks for another: **shuffle** varies the kinds term by term across the whole catalogue, so two seeds give two genuinely different spreads rather than the same spread reworded. Three rounds cover every data type and every quirk there is — asserted in the suite, not hoped for.
@@ -324,7 +335,7 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,431 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,450 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 

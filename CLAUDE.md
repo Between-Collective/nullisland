@@ -40,6 +40,7 @@ Prefer it over reading source when you need to know what exists:
 ```bash
 npm run --silent cli -- --list problems --json   # every problem, and the formats/data types it applies to
 npm run --silent cli -- --list types --json      # every data type, its geometry, its columns
+npm run --silent cli -- --list all --json        # the whole catalogue: kinds, their nouns and the words people use
 npm run --silent cli -- --list quirks --json     # every search quirk, its phase, and what it needs
 npm run --silent cli -- --list places --json     # the gazetteer: coords, aliases, ambiguity
 npm run --silent cli -- --clean --count 20 --json   # the result as data, including the checks that ran

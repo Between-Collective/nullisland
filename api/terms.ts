@@ -15,6 +15,7 @@
  * exactly — from here, from the CLI, or from the library.
  */
 import {
+  buildCatalogue,
   DEFAULT_ANCHOR,
   DEFAULT_SUBJECT_PROFILE,
   generateTerms,
@@ -91,6 +92,13 @@ export default function handler(req: Request, res: Response): void {
   // The catalogue as data, so a harness can pick ids without reading source or
   // guessing at what will be refused.
   const listing = params.get("list");
+  if (listing === "all" || listing === "catalogue") {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.end(`${JSON.stringify(buildCatalogue(), null, 2)}\n`);
+    return;
+  }
   if (listing) {
     const catalogue: Record<string, unknown> = {
       types: PROFILES.map((p) => ({ id: p.id, label: p.label, family: p.family })),
@@ -105,7 +113,7 @@ export default function handler(req: Request, res: Response): void {
       formats: TERM_FORMATS.map((f) => ({ id: f.id, mime: f.mime, groundTruth: f.groundTruth })),
     };
     if (!(listing in catalogue)) {
-      return fail(`don't know how to list "${listing}"`, Object.keys(catalogue).join(", "));
+      return fail(`don't know how to list "${listing}"`, ["all", ...Object.keys(catalogue)].join(", "));
     }
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json; charset=utf-8");

@@ -20,6 +20,7 @@ import {
 import { randomSeed } from "../src/rng";
 import { SEED_WORDS } from "../src/seed-words";
 import { decodeApp, decodeConfig, encodeApp, encodeConfig } from "../src/share";
+import { buildCatalogue } from "../src/catalogue";
 import type { AppConfig, TermsConfig } from "../src/share";
 import { generateTerms, MAX_TERMS } from "../src/search/terms";
 import { inspectTerms } from "../src/search/clean";
@@ -1569,10 +1570,94 @@ console.log("\n10. search terms");
         JSON.stringify(plain.terms) === JSON.stringify(off.terms));
     }
 
+    // "Cases and mobile devices near here" is contact tracing, not a category
+    // error, and the affinity groups alone would never produce it.
+    {
+      let crossed = 0;
+      const domain = new Map<string, number>();
+      [
+        ["flight-adsb", "maritime-ais", "fleet-telematics", "transit-gtfs", "micromobility-mds", "mobile-location-pings"],
+        ["cadastral-parcels", "building-footprints", "zoning-land-use", "indoor-bim", "utility-networks"],
+        ["satellite-scene-footprints", "elevation-contours", "weather-observations", "land-cover-ndvi", "natural-hazard-zones"],
+        ["census-boundary", "health-epidemiology", "crime-incident", "geosocial-checkins", "poi-venues", "trade-area-catchment", "psychographics-spending"],
+      ].forEach((group, i) => group.forEach((id) => domain.set(id, i)));
+
+      for (let s = 0; s < 12; s++) {
+        for (const t of generateTerms(termOpts({ seed: `cross-${s}`, count: 60, shuffle: true, intensity: 0.3 })).terms) {
+          if (t.expect.subjects.length < 2) continue;
+          if (new Set(t.expect.subjects.map((sub) => domain.get(sub.dataType))).size > 1) crossed++;
+        }
+      }
+      ok("kinds combine across domains as well as within them", crossed > 0, `${crossed} found`);
+    }
+
+    // "Near here" is a third state: neither resolved nor nonexistent. There is
+    // no answer without the caller's position, and saying so is the answer.
+    {
+      const here = generateTerms(termOpts({ count: 20, quirks: ["here"], intensity: 0 }));
+      ok("--quirks here needs the caller's location", here.terms.every((t) => t.expect.needsLocation));
+      ok("a deictic place resolves to nowhere on its own",
+        here.terms.every((t) => t.expect.places.some((p) => p.id === null && p.candidates.length === 0)));
+      // Not the same as a place that does not exist: that one can never match,
+      // this one matches fine once you know where the caller is.
+      ok("a deictic place is not an unanswerable query",
+        here.terms.every((t) => !t.expect.empty));
+      ok("a deictic query says what a correct search does", here.terms.every((t) => t.notes.length > 0));
+      ok("a deictic phrase carries its own preposition",
+        here.terms.every((t) => !/\bin (near|around|close|nearby)\b/.test(t.text)),
+        here.terms.find((t) => /\bin (near|around|close|nearby)\b/.test(t.text))?.text ?? "");
+      // A query naming a place that does not exist alongside one that does is
+      // answerable in half — so the claim is about the ones where nothing
+      // resolves at all.
+      const elsewhere = generateTerms(termOpts({ count: 40, quirks: ["unknown-place"], intensity: 0 }));
+      const nowhereAtAll = elsewhere.terms.filter((t) =>
+        t.expect.places.length > 0 && t.expect.places.every((p) => p.candidates.length === 0));
+      ok("a place that does not exist is unanswerable, not merely un-located",
+        nowhereAtAll.length > 0 && nowhereAtAll.every((t) => t.expect.empty && !t.expect.needsLocation),
+        `${nowhereAtAll.filter((t) => !t.expect.empty).length} of ${nowhereAtAll.length}`);
+    }
+
     const any = set.terms.filter((t) => t.expect.anySubject);
     ok("some term names no kind at all", any.length > 0);
     ok("a term naming no kind still says what a correct search does",
       any.every((t) => t.notes.length > 0));
+  }
+
+  /* ── the catalogue, which is what a classifier reads ──────────────────── */
+  {
+    const cat = buildCatalogue();
+    ok("the catalogue holds every data type", cat.dataTypes.length === PROFILES.length);
+    ok("the catalogue holds every quirk", cat.quirks.length === QUIRKS.length);
+    ok("the catalogue holds every problem", cat.problems.length === PROBLEMS.length);
+    ok("the catalogue holds every place", cat.places.length === PLACES.length);
+
+    // The whole point of it: the words a user types, mapped to the id they mean.
+    ok("every data type carries the words people use for it",
+      cat.dataTypes.every((d) => d.aliases.length > 0),
+      cat.dataTypes.filter((d) => !d.aliases.length).map((d) => d.id).join(","));
+    ok("every data type carries both forms of its own noun",
+      cat.dataTypes.every((d) => !!d.singular && !!d.plural));
+    // An alias pointing at two data types would make the mapping ambiguous in
+    // the one direction it exists to serve.
+    {
+      const owner = new Map<string, string>();
+      const clashes: string[] = [];
+      for (const type of cat.dataTypes) {
+        for (const word of [type.plural, ...type.aliases]) {
+          const key = word.toLowerCase();
+          if (owner.has(key) && owner.get(key) !== type.id) clashes.push(`${word}: ${owner.get(key)} / ${type.id}`);
+          owner.set(key, type.id);
+        }
+      }
+      ok("no word points at two data types", clashes.length === 0, clashes.join("; "));
+    }
+    ok("the catalogue says what each section is for",
+      Object.keys(cat.about).length >= 4);
+    ok("the catalogue is valid JSON",
+      typeof JSON.parse(JSON.stringify(cat)) === "object");
+    // Spelled out rather than omitted, so nothing has to know the convention.
+    ok("the catalogue spells out where each problem applies",
+      cat.problems.every((p) => Array.isArray(p.formats) && p.formats.length > 0));
   }
 
   /* ── every data type has a noun, so a term can be about it ────────────── */

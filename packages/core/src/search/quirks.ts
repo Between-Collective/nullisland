@@ -161,6 +161,15 @@ export const QUIRKS: Quirk[] = [
     example: "show me mobile devices in Mobile",
   },
   {
+    id: "here",
+    label: "Near here, wherever that is",
+    blurb: "\"Near here\", \"around me\", \"nearby\". Resolves to nowhere on its own: the answer needs the caller's position, and a search that quietly picks a default centres the map on somewhere nobody asked about.",
+    category: "place",
+    needs: "place",
+    phase: "plan",
+    example: "cases and mobile devices near here",
+  },
+  {
     id: "unknown-place",
     label: "A place that does not exist",
     blurb: "A plausible-looking name that resolves to nothing. The right answer is zero rows and a reason, not zero rows and silence.",

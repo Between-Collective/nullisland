@@ -16,6 +16,7 @@ import {
   appliesTo,
   appliesToProfile,
   BOUNDARIES as BOUNDARY_META,
+  buildCatalogue,
   buildContext,
   buildPackage,
   CATEGORY_LABELS,
@@ -241,6 +242,10 @@ function listJson(what: string): boolean {
     write({ regions: REGIONS.map((r) => ({ id: r.id, label: r.label, lon: r.lon, lat: r.lat })) });
     return true;
   }
+  if (what === "all" || what === "catalogue") {
+    write(buildCatalogue());
+    return true;
+  }
   if (what === "quirks") {
     write({
       quirks: QUIRKS.map((q) => ({
@@ -300,7 +305,7 @@ function list(what: string, json: boolean): void {
     if (listJson(what)) return;
     fail(
       `don't know how to list "${what}"`,
-      "try: formats, types, problems, regions, boundaries, quirks, places",
+      "try: all, formats, types, problems, regions, boundaries, quirks, places",
     );
   }
   const out = process.stdout;
@@ -368,7 +373,7 @@ function list(what: string, json: boolean): void {
   }
   fail(
     `don't know how to list "${what}"`,
-    "try: formats, types, problems, regions, boundaries, quirks, places",
+    "try: all, formats, types, problems, regions, boundaries, quirks, places",
   );
 }
 
@@ -972,7 +977,7 @@ function main(): void {
     if (!listing) {
       fail(
         "--list needs something to list",
-        "try: formats, types, problems, regions, boundaries, quirks, places",
+        "try: all, formats, types, problems, regions, boundaries, quirks, places",
       );
     }
     list(listing, args.flags.has("json"));
