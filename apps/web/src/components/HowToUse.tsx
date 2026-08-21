@@ -122,9 +122,10 @@ const STEPS: Step[] = [
       <>
         A file is half of it. The other half is what somebody types into the search box —{" "}
         <em>devices in Tokyo and Kyoto</em>, <em>devices in new zealand</em>,{" "}
-        <em>devices that were in the Estádio da Luz in Lisbon last week</em>. The{" "}
-        <strong>search terms</strong> panel deals out {QUIRKS.length} of those, one problem apiece:
-        a misspelled venue, a name that means two different cities, a window that reads two ways.
+        <em>devices that were in the Estádio da Luz in Lisbon last week</em>. Switch to the{" "}
+        <strong>Search terms</strong> tab and the catalogue is dealt out {QUIRKS.length} at a time,
+        one problem apiece: a misspelled venue, a name that means two different cities, a window
+        that reads two ways.
         Each one carries the parse it should have been given — the places resolved to real
         coordinates, the window resolved to instants — so you can assert on the answer rather than
         squint at it. <strong>Clean</strong> gives you the control set, same as everywhere else.

@@ -27,7 +27,7 @@ npx nullisland --type maritime-ais --format csv --typical --count 200
 5. **Take the file and its context.** Download or copy the fixture; the dark panel holds a written account of everything wrong with it, for an issue or an agent.
 6. **Make it reproducible.** Every file comes from its seed, so *Share* copies a link that rebuilds it byte for byte. Put the seed in your test suite instead of committing the file.
 7. **Or take a package** — 5, 9 or 18 fixtures in one zip, every format and a spread of data types, with a README and a manifest describing all of them.
-8. **Then test the box above the map.** The *search terms* panel deals out the query catalogue one problem apiece — a misspelled venue, a name that means two cities, a window that reads two ways — each with its expected parse. *Clean* gives the control set here too.
+8. **Then test the box above the map.** Switch to the *Search terms* tab and the query catalogue is dealt out one problem apiece — a misspelled venue, a name that means two cities, a window that reads two ways — each with its expected parse. *Clean* gives the control set here too.
 
 A word of warning before you open anything in a spreadsheet: see [Handling what comes out](#handling-what-comes-out).
 
