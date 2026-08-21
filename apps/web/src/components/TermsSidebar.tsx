@@ -129,7 +129,31 @@ export function TermsSidebar({
           </div>
         </Field>
 
-        {chosen.length > 1 ? (
+        {/* The mode for a broad corpus: kinds vary term to term rather than
+            being held fixed, so two seeds give two genuinely different spreads
+            instead of the same spread reworded. */}
+        <button
+          type="button"
+          aria-pressed={terms.shuffle}
+          onClick={() => patchTerms({ shuffle: !terms.shuffle })}
+          className={[
+            "w-full rounded-full border px-3 py-2 text-[12px] font-medium transition-colors",
+            terms.shuffle
+              ? "border-ink bg-ink text-white"
+              : "border-line-strong bg-white text-ink hover:border-dim",
+          ].join(" ")}
+        >
+          {terms.shuffle ? "Shuffling kinds every term" : "Shuffle kinds"}
+        </button>
+        {terms.shuffle && (
+          <p className="text-[11.5px] leading-relaxed text-muted">
+            Every term draws its own kind{terms.profiles.length > 1 ? " from the ones ticked" : " from all of them"},
+            and a share of them name several. Press <strong className="font-semibold text-ink">New seed</strong> for
+            another spread — a few rounds and you have covered the catalogue.
+          </p>
+        )}
+
+        {chosen.length > 1 && !terms.shuffle ? (
           <>
             <button
               type="button"
@@ -150,7 +174,7 @@ export function TermsSidebar({
                 : `Terms are spread across ${chosen.length} kinds, one each. Combine them to put ${subject.plural} in the same query.`}
             </p>
           </>
-        ) : (
+        ) : terms.shuffle ? null : (
           <p className="text-[11.5px] leading-relaxed text-muted">
             Queries about <strong className="font-semibold text-ink">{subject.plural}</strong>. Tick
             another kind to get queries that span more than one — which is a different problem, and

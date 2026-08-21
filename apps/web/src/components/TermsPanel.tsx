@@ -207,6 +207,7 @@ export function TermsPanel({
         count: terms.count,
         profile,
         profiles,
+        shuffle: terms.shuffle,
         quirks: terms.quirks,
         intensity: terms.intensity,
         near: terms.near,
@@ -252,9 +253,11 @@ export function TermsPanel({
         <div className="min-w-0">
           <CardTitle>
             {set.terms.length.toLocaleString()} terms about{" "}
-            {profiles.length > 1
-              ? `${profiles.length} kinds of thing`
-              : subject.plural}
+            {terms.shuffle
+              ? "a shuffled mix"
+              : profiles.length > 1
+                ? `${profiles.length} kinds of thing`
+                : subject.plural}
           </CardTitle>
           <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
             {terms.clean ? (

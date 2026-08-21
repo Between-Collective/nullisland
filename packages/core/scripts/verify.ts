@@ -1031,6 +1031,7 @@ console.log("\n9. the reproducibility promise");
     const termsOf = (over: Partial<TermsConfig> = {}): TermsConfig => ({
       count: 43,
       profiles: [],
+      shuffle: false,
       quirks: [],
       intensity: 0.15,
       near: "anywhere",
@@ -1055,6 +1056,8 @@ console.log("\n9. the reproducibility promise");
       appOf({ terms: termsOf({ count: 0, intensity: 1, near: "nz", format: "csv" }) }),
       appOf({ mode: "terms", file: opts({ format: "shapefile", profile: "maritime-ais" }) }),
       appOf({ mode: "terms", terms: termsOf({ profiles: ["mobile-location-pings", "flight-adsb", "maritime-ais"] }) }),
+      appOf({ mode: "terms", terms: termsOf({ shuffle: true }) }),
+      appOf({ mode: "terms", terms: termsOf({ shuffle: true, clean: true, count: 200 }) }),
     ];
     for (const config of cases) {
       const round = decodeApp("#" + encodeApp(config));
@@ -1516,6 +1519,54 @@ console.log("\n10. search terms");
         }
       }
       ok("no term repeats a word by accident", doubled === 0, `${doubled}, e.g. ${example}`);
+    }
+
+    // Shuffling is the mode a corpus is generated in: broad, varied, and
+    // different again on the next seed. All three of those are testable.
+    {
+      const rounds = ["one", "two", "three"].map((seed) =>
+        generateTerms(termOpts({ seed: `shuffle-${seed}`, count: 60, shuffle: true, intensity: 0.15 })),
+      );
+      const kindsOf = (s: (typeof rounds)[number]) =>
+        new Set(s.terms.flatMap((t) => t.expect.subjects.map((sub) => sub.dataType)));
+
+      ok("a shuffled set spans most of the catalogue",
+        rounds.every((r) => kindsOf(r).size >= 15),
+        rounds.map((r) => kindsOf(r).size).join(","));
+      ok("a shuffled set carries a real share of multi-kind queries",
+        rounds.every((r) => r.terms.filter((t) => t.expect.subjects.length > 1).length >= 4),
+        rounds.map((r) => r.terms.filter((t) => t.expect.subjects.length > 1).length).join(","));
+      // The point of reshuffling is that the next round is genuinely different.
+      ok("two seeds give two different corpora",
+        rounds[0].terms.map((t) => t.text).join("|") !== rounds[1].terms.map((t) => t.text).join("|"));
+      ok("a shuffled set is still reproducible from its seed",
+        JSON.stringify(generateTerms(termOpts({ seed: "shuffle-one", count: 60, shuffle: true, intensity: 0.15 })).terms) ===
+          JSON.stringify(rounds[0].terms));
+
+      // Across a few rounds, everything in the catalogue turns up — which is
+      // the claim the whole mode is for.
+      const overRounds = new Set(rounds.flatMap((r) => [...kindsOf(r)]));
+      ok("three rounds cover every kind there is",
+        overRounds.size === PROFILES.filter((p) => p.id !== "generic").length,
+        `${overRounds.size} kinds`);
+      const quirksOver = new Set(rounds.flatMap((r) => r.stats.quirks));
+      ok("three rounds cover every quirk there is", quirksOver.size === QUIRKS.length, `${quirksOver.size}`);
+
+      // Spreading across kinds is not something wrong with a query. Naming two
+      // is, so a control set still names exactly one however it was shuffled.
+      const control = generateTerms(termOpts({ count: 120, shuffle: true, clean: true }));
+      ok("a shuffled control set still names one kind per term",
+        control.terms.every((t) => t.expect.subjects.length === 1));
+      ok("a shuffled control set still passes its own checks", inspectTerms(control).passed,
+        inspectTerms(control).checks.filter((c) => !c.ok).map((c) => c.detail).join("; "));
+      ok("a shuffled control set still spreads across kinds",
+        new Set(control.terms.map((t) => t.expect.subjects[0].dataType)).size >= 15);
+
+      // And not shuffling has to leave the stream exactly where it was.
+      const plain = generateTerms(termOpts({ seed: "no-shuffle", count: 46 }));
+      const off = generateTerms(termOpts({ seed: "no-shuffle", count: 46, shuffle: false }));
+      ok("leaving shuffle off changes nothing",
+        JSON.stringify(plain.terms) === JSON.stringify(off.terms));
     }
 
     const any = set.terms.filter((t) => t.expect.anySubject);

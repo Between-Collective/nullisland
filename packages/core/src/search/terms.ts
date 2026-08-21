@@ -189,6 +189,20 @@ export interface TermsOptions {
    */
   profiles?: string[];
   /**
+   * Vary the kinds from term to term instead of holding them fixed.
+   *
+   * The mode for a broad corpus: every term draws its own kind from the pool —
+   * the whole catalogue when none is named — and a share of them name several.
+   * Two seeds then give two genuinely different spreads rather than the same
+   * spread reworded, which is what makes "generate, test, reshuffle, test"
+   * converge on coverage instead of circling one corner of it.
+   *
+   * A control set still names exactly one kind per term. Spreading across kinds
+   * is not something wrong with a query; naming two of them is, and a clean set
+   * has nothing wrong with it by definition.
+   */
+  shuffle?: boolean;
+  /**
    * Quirk ids. Empty deals the whole catalogue out one per term, which is what
    * makes a set of forty terms forty different problems rather than forty rolls
    * of the same dice. `clean` is how you ask for none.
@@ -310,9 +324,24 @@ function slotFor(place: Place): PlanPlace {
  */
 function kindsInPlay(opts: TermsOptions): string[] {
   const asked = (opts.profiles ?? []).filter((id) => SUBJECTS[id]);
-  if (!asked.length) return [opts.profile];
-  return asked.includes(opts.profile) ? asked : [opts.profile, ...asked];
+  if (asked.length) return asked.includes(opts.profile) ? asked : [opts.profile, ...asked];
+  // Shuffling with nothing named means the whole catalogue, minus the generic
+  // export — "records" is a schema with no subject, and a corpus meant to cover
+  // real feeds should not spend a third of itself on the one that isn't.
+  if (opts.shuffle) {
+    return PROFILES.filter((p) => p.id !== "generic" && SUBJECTS[p.id]).map((p) => p.id);
+  }
+  return [opts.profile];
 }
+
+/**
+ * How often a shuffled term names more than one kind.
+ *
+ * High enough that a corpus of a few dozen carries a real handful of them, low
+ * enough that the single-kind case — still the common one in the wild — does
+ * not get crowded out.
+ */
+const SHUFFLE_COMBINES = 0.3;
 
 /** The pool a term draws its places from. */
 function pool(near: string): Place[] {
@@ -777,9 +806,12 @@ const PLAN_QUIRKS: Record<string, PlanQuirk> = {
     const first = plan.subjects[0];
     if (!first) return null;
     const used = new Set(plan.subjects.map((s) => s.profile));
-    // When the caller named the kinds they ship, combine those and nothing
-    // else. Guessing at an affinity group is only useful when they did not.
-    const asked = kindsInPlay(opts);
+    // When the caller named the kinds they ship, combine those and nothing else.
+    // Otherwise fall back to what people name in the same breath — including
+    // when shuffling, where the pool is the whole catalogue and combining
+    // freely across it would produce "households, aircraft and tiles", which is
+    // not a query anyone has typed and teaches nothing that a real one doesn't.
+    const asked = (opts.profiles ?? []).filter((id) => SUBJECTS[id]);
     const group = asked.length > 1 ? asked : ASKED_TOGETHER.find((g) => g.includes(first.profile)) ?? [];
     const kin = PROFILES.filter((p) => group.includes(p.id) && !used.has(p.id) && SUBJECTS[p.id]);
     const rest = PROFILES.filter((p) => !used.has(p.id) && SUBJECTS[p.id]);
@@ -1259,11 +1291,19 @@ function expectation(plan: Plan, profile: string): TermExpectation {
 function assign(rng: Rng, index: number, opts: TermsOptions, order: Quirk[]): string[] {
   if (!order.length) return [];
   const lead = order[index % order.length];
+  // Shuffling adds multi-kind queries on top of whatever the catalogue deals,
+  // because that is the shape a mixed corpus is short of — one term in
+  // forty-six is not a sample of it. Recorded as the quirk it is rather than
+  // arriving unannounced, so a term naming three kinds says so.
+  const shuffled =
+    opts.shuffle && !EXCLUSIVE_QUIRKS.includes(lead.id) && rng.bool(SHUFFLE_COMBINES)
+      ? ["many-subjects"]
+      : [];
   // `no-place` and `empty` remove the thing every other quirk acts on, so a
   // term led by one of them takes no extras. Reporting three quirks and
   // demonstrating one is the tool lying about its own output.
   if (EXCLUSIVE_QUIRKS.includes(lead.id)) return [lead.id];
-  const chosen = new Set<string>([lead.id]);
+  const chosen = new Set<string>([lead.id, ...shuffled]);
   const extras = Math.floor(opts.intensity * 3);
   for (let i = 0; i < extras; i++) {
     if (!rng.bool(opts.intensity)) continue;

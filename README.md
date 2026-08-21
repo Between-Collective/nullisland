@@ -266,6 +266,29 @@ Left unspecified, kinds are drawn from the ones people name in the same breath �
 
 `resolvesTo` is null in exactly the two cases where no single answer is correct — the name belongs to nowhere, or to more than one somewhere — because a search that returns one result confidently is the failure this is here to catch, and an expectation that named a winner would contradict its own note.
 
+### A corpus, over and over
+
+For a harness that wants a broad mix, runs against it, and asks for another: **shuffle** varies the kinds term by term across the whole catalogue, so two seeds give two genuinely different spreads rather than the same spread reworded. Three rounds cover every data type and every quirk there is — asserted in the suite, not hoped for.
+
+```bash
+nullisland --terms 200 --shuffle          # a new spread every run
+nullisland --terms 200 --shuffle --seed round-one   # and that exact one again
+```
+
+There is an HTTP endpoint for the same thing, so the loop does not have to shell out:
+
+```bash
+curl https://nullisland.app/api/terms                      # 120 shuffled terms, JSONL
+curl 'https://nullisland.app/api/terms?terms=300&format=json'
+curl 'https://nullisland.app/api/terms?types=flight-adsb,maritime-ais&quirks=many-subjects'
+curl 'https://nullisland.app/api/terms?clean=1'            # the control set
+curl 'https://nullisland.app/api/terms?list=quirks'        # the catalogue as data
+```
+
+No parameters means a fresh corpus every call. The seed comes back in the body and in `x-nullisland-seed`, so any corpus that finds a bug rebuilds exactly — from the endpoint, the CLI, or the library. A request naming a seed is immutable and cached; one without is never cached. Capped at 500 terms a call, and a request over that is refused rather than quietly clamped, because a harness that asked for 5,000 and silently got 500 would draw the wrong conclusion about its own coverage.
+
+The page itself is still a static export and still makes no network requests after load — the endpoint sits beside it as a function, and nothing in the app calls it.
+
 Windows are anchored to a fixed instant rather than to the clock, so an expected answer that is right today is still right next month. `--anchor` moves it.
 
 Five containers: `jsonl` (one term per line, what a test suite reads), `json`, `csv`, `txt` (the queries and nothing else, for pasting into a search box) and `md` (a report to hand a reviewer or an agent). The `txt` one cannot carry the expected parse, and says so in the file it writes.
@@ -301,7 +324,7 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,421 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces, `packages/core/scripts/verify.ts` (2,431 assertions) and the CLI smoke test (119 assertions). It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 

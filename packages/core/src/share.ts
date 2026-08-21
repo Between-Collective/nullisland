@@ -124,6 +124,8 @@ export interface TermsConfig {
    * which is what a link made before this existed carries.
    */
   profiles: string[];
+  /** Vary the kinds from term to term. See TermsOptions.shuffle. */
+  shuffle: boolean;
   quirks: string[];
   intensity: number;
   near: string;
@@ -161,6 +163,7 @@ export function encodeApp(config: AppConfig): string {
   if (terms.clean) params.set("tc", "1");
   if (terms.quirks.length) params.set("tq", terms.quirks.join("."));
   if (terms.profiles.length) params.set("tp", terms.profiles.join("."));
+  if (terms.shuffle) params.set("tx", "1");
   return params.toString();
 }
 
@@ -201,6 +204,7 @@ export function decodeApp(hash: string): DecodedApp {
   if (format && TERM_FORMATS.some((f) => f.id === format)) terms.format = format as TermFormatId;
 
   if (params.has("tc")) terms.clean = params.get("tc") === "1";
+  if (params.has("tx")) terms.shuffle = params.get("tx") === "1";
 
   const quirks = params.get("tq");
   if (quirks !== null) {

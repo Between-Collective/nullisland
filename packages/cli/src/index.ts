@@ -87,7 +87,7 @@ const TAKES_VALUE = new Set([
 
 const IS_FLAG = new Set([
   "help", "h", "version", "v", "typical", "clean", "stdout", "context", "json", "compact",
-  "extract", "package", "list", "terms",
+  "extract", "package", "list", "terms", "shuffle",
 ]);
 
 /** `--key value`, `--key=value`, `--flag`, and bare words. No cleverness. */
@@ -759,6 +759,7 @@ function generateTermSet(args: Args): void {
     count,
     profile: profiles[0] ?? profile,
     profiles,
+    shuffle: args.flags.has("shuffle"),
     quirks,
     intensity: clean ? 0 : number("--intensity", args.values.get("intensity"), 0.15, 0, 1),
     near,

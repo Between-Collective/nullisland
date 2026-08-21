@@ -12,7 +12,10 @@ Everything is deterministic from a seed: the same seed produces byte-identical o
 packages/core   the generator. No dependencies, no DOM. Runs in Node and in a browser.
 packages/cli    a thin front for core — same generator, same bytes
 apps/web        the Next.js app at nullisland.app. Static export; nothing is uploaded
+api/            one serverless function: GET /api/terms, a corpus over HTTP
 ```
+
+`api/` sits beside the static export rather than inside it — Vercel picks up a root `api/` directory as functions, so `output: "export"` is untouched and the page still makes no network requests after load. The function is a front for core like the CLI is; it must not grow generation logic of its own.
 
 Core is the only place that knows how to build a file. The CLI and the web app both call `generate()` and neither reimplements anything — if you find yourself adding generation logic outside `packages/core`, that is the bug.
 

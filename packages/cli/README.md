@@ -188,6 +188,9 @@ nullisland --terms 46 --term-format md --out docs
 
 # Queries that span the feeds you actually ship, every one of them
 nullisland --terms 40 --types mobile-location-pings,flight-adsb,maritime-ais --quirks many-subjects
+
+# A broad mixed corpus, and a different one on the next run
+nullisland --terms 200 --shuffle --stdout
 ```
 
 **Exit codes.** `0` success · `1` a clean file, or a term set, failed its own check — which is a bug in Null Island rather than in your settings · `2` a usage error, printed on stderr. An unknown option, data type, problem, quirk or place id is always an error and never a silent default: a run that quietly ignored a typo would hand back a file you would go on to believe things about.

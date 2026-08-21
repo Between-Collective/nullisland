@@ -69,6 +69,7 @@ const TERM_DEFAULTS: TermsConfig = {
   // Empty follows the file half's data type. Ticking a second kind here is what
   // turns a set of queries about one feed into queries that span several.
   profiles: [],
+  shuffle: false,
   quirks: [],
   intensity: 0.15,
   near: "anywhere",
@@ -455,7 +456,12 @@ export function Generator() {
 
           {mode === "terms" ? (
             <div className="space-y-3">
-              <TermsPanel seed={opts.seed} profile={termProfiles[0]} profiles={termProfiles} terms={terms} />
+              <TermsPanel
+                seed={opts.seed}
+                profile={termProfiles[0]}
+                profiles={terms.profiles}
+                terms={terms}
+              />
               <div className="pt-5">
                 <QuirkGrid
                   selected={terms.quirks}
