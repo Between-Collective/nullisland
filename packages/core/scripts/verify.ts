@@ -21,6 +21,7 @@ import { randomSeed } from "../src/rng";
 import { SEED_WORDS } from "../src/seed-words";
 import { decodeApp, decodeConfig, encodeApp, encodeConfig } from "../src/share";
 import { buildCatalogue } from "../src/catalogue";
+import { renderFor, rowsExpected, scaleOf } from "../src/search/layers";
 import type { AppConfig, TermsConfig } from "../src/share";
 import { generateTerms, MAX_TERMS } from "../src/search/terms";
 import { inspectTerms } from "../src/search/clean";
@@ -1621,6 +1622,107 @@ console.log("\n10. search terms");
     ok("some term names no kind at all", any.length > 0);
     ok("a term naming no kind still says what a correct search does",
       any.every((t) => t.notes.length > 0));
+  }
+
+  /* ── what should come back, per kind ──────────────────────────────────── */
+  {
+    const set = generateTerms(termOpts({ count: 200, shuffle: true, intensity: 0.4 }));
+
+    // One layer per kind asked for, always — the answer to a three-kind query
+    // is three result sets, and folding them into one is the bug.
+    ok("a layer for every kind asked for",
+      set.terms.every((t) => t.expect.layers.length === t.expect.subjects.length));
+    ok("every layer names a real data type",
+      set.terms.every((t) => t.expect.layers.every((l) => PROFILES.some((p) => p.id === l.dataType))));
+    ok("every layer carries the word the query used",
+      set.terms.every((t) =>
+        t.expect.layers.every((l, i) => l.typed === t.expect.subjects[i].typed)));
+    ok("every layer that expects rows carries the columns they have",
+      set.terms.every((t) => t.expect.layers.every((l) => l.dataType === "generic" || l.fields.length > 0)));
+    ok("every layer says how to draw it",
+      set.terms.every((t) => t.expect.layers.every((l) => !!l.render)));
+    // A layer with no rows has to say why, or it is indistinguishable from a
+    // search that simply failed.
+    ok("a layer with no rows says why",
+      set.terms.every((t) => t.expect.layers.every((l) => l.expectRows || !!l.reason)));
+
+    // The one rule that is asserted: vessels need water.
+    {
+      const dry = getPlace("mexicocity")!;
+      const wet = getPlace("lisbon")!;
+      ok("vessels have no rows where there is no water",
+        !rowsExpected("maritime-ais", [dry]).expectRows &&
+          !!rowsExpected("maritime-ais", [dry]).reason);
+      ok("vessels have rows where there is", rowsExpected("maritime-ais", [wet]).expectRows);
+      // One wet place is enough: the answer is real, it is just all in one half.
+      ok("one place with water is enough", rowsExpected("maritime-ais", [dry, wet]).expectRows);
+      // Nothing else is claimed, because nothing else can be stated for every
+      // entry without guessing.
+      ok("no other kind is refused for want of a place trait",
+        PROFILES.every((p) => p.id === "maritime-ais" || rowsExpected(p.id, [dry]).expectRows));
+    }
+
+    // Width decides how the results can be drawn: five hundred points across a
+    // country is a heatmap and five in a venue is five markers.
+    ok("scale comes from the widest place named",
+      scaleOf([getPlace("estadio-da-luz")!]) === "venue" &&
+        scaleOf([getPlace("estadio-da-luz")!, getPlace("pt")!]) === "country" &&
+        scaleOf([]) === "none");
+    ok("points thin out as the query widens",
+      renderFor("scatter", "venue") === "markers" &&
+        renderFor("scatter", "city") === "clustered" &&
+        renderFor("scatter", "country") === "heatmap");
+    ok("lines are generalised at width",
+      renderFor("track", "venue") === "lines" && renderFor("track", "country") === "simplified-lines");
+    ok("areas are shaded at width",
+      renderFor("parcel", "city") === "polygons" && renderFor("zone", "country") === "choropleth");
+
+    // Simulated rows, when asked for: shaped like the feed, inside the place.
+    {
+      const sampled = generateTerms(
+        termOpts({ count: 30, shuffle: true, intensity: 0.2, samples: 3, near: "lisbon" }),
+      );
+      // Only where there is somewhere to put them: a query naming no place at
+      // all is unbounded, and there is no box to draw a position from.
+      const placed = sampled.terms.filter((t) => t.expect.places.some((p) => p.id));
+      const withRows = placed.flatMap((t) => t.expect.layers).filter((l) => l.expectRows);
+      ok("a layer expecting rows gets them when samples are asked for",
+        withRows.every((l) => (l.sample?.length ?? 0) > 0), 
+        `${withRows.filter((l) => !l.sample?.length).length} of ${withRows.length} empty`);
+      ok("a layer expecting none gets none",
+        sampled.terms.flatMap((t) => t.expect.layers).filter((l) => !l.expectRows)
+          .every((l) => (l.sample?.length ?? 0) === 0));
+      // A place that does not resolve leaves nowhere to look, for every kind.
+      // Truly unknown, not merely ambiguous: a name meaning two places resolves
+      // to somewhere, and rows exist in both of them.
+      const unresolved = sampled.terms.filter(
+        (t) => t.expect.places.length > 0 && t.expect.places.every((p) => p.candidates.length === 0),
+      );
+      ok("nothing has rows when the place does not resolve",
+        unresolved.every((t) => t.expect.layers.every((l) => !l.expectRows && !!l.reason)),
+        `${unresolved.length} such terms`);
+      // Every row carries the columns the layer said it would, plus a position.
+      ok("every simulated row carries the columns its layer named",
+        withRows.every((l) =>
+          (l.sample ?? []).every((row) =>
+            l.fields.every((f) => f in row) && "longitude" in row && "latitude" in row)));
+      // And lands inside the place, or it is not an answer to this query.
+      ok("every simulated row lands inside the place it was asked about",
+        withRows.every((l) =>
+          (l.sample ?? []).every((row) => {
+            const lon = row.longitude as number;
+            const lat = row.latitude as number;
+            return Math.abs(lon) <= 180 && Math.abs(lat) <= 90;
+          })));
+      // Off by default, so a corpus stays a corpus.
+      const plain = generateTerms(termOpts({ count: 10 }));
+      ok("samples are off unless asked for",
+        plain.terms.every((t) => t.expect.layers.every((l) => l.sample === undefined)));
+      // And asking for none leaves the stream exactly where it was.
+      ok("asking for no samples changes nothing",
+        JSON.stringify(generateTerms(termOpts({ count: 40, seed: "sample-stream" })).terms) ===
+          JSON.stringify(generateTerms(termOpts({ count: 40, seed: "sample-stream", samples: 0 })).terms));
+    }
   }
 
   /* ── the catalogue, which is what a classifier reads ──────────────────── */

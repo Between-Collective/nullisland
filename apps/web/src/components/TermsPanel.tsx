@@ -137,6 +137,28 @@ function Row({ term }: { term: SearchTerm }) {
             )}
           </div>
         ) : null}
+        {/* What comes back, per kind. A layer with no rows is an answer, and
+            the reason it has none is the useful half of it. */}
+        {term.expect.layers.map((layer, i) => (
+          <div key={`layer-${i}`}>
+            <span className="text-muted">{visible(layer.typed)}</span>
+            {" ⇒ "}
+            {layer.expectRows ? (
+              <>
+                <span className="text-mint-ink">{layer.dataType}</span>
+                <span className="text-dim">
+                  {" "}
+                  · {layer.render} · {layer.fields.length} cols
+                  {layer.fields.length ? ` (${layer.fields.slice(0, 3).join(", ")}…)` : ""}
+                </span>
+              </>
+            ) : (
+              <span className="text-cat-attributes">
+                no rows — {layer.reason?.split(".")[0]}
+              </span>
+            )}
+          </div>
+        ))}
         {places.length === 0 && <div>no place — nothing to filter on</div>}
         {places.map((place, i) => (
           <div key={i}>

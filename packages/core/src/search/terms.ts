@@ -30,7 +30,9 @@ import {
   wantsTime,
   type Intent,
 } from "./phrasing";
+import { buildLayer, scaleOf, type LayerExpectation, type Scale } from "./layers";
 import { EXCLUSIVE_QUIRKS, getQuirk, QUIRKS, type Quirk } from "./quirks";
+import { simulateLayer } from "./simulate";
 import {
   ambiguousDate,
   DEFAULT_ANCHOR,
@@ -130,6 +132,18 @@ export interface TermExpectation {
   anySubject: boolean;
   /** The data type the term set was generated for. */
   profile: string;
+  /**
+   * How wide the query is, which is what decides how its results can be drawn.
+   */
+  scale: Scale;
+  /**
+   * One result set per kind of thing asked for.
+   *
+   * Three kinds is three layers, and they do not behave alike — nor do they all
+   * have rows. A layer with `expectRows: false` is a correct, meaningful answer
+   * and must not be folded into "no results" for the whole query.
+   */
+  layers: LayerExpectation[];
   places: PlaceExpectation[];
   time: TimeWindow;
   /**
@@ -229,6 +243,14 @@ export interface TermsOptions {
   clean?: boolean;
   /** 0–1. How often a term picks up a quirk beyond the one it was assigned. */
   intensity: number;
+  /**
+   * Rows of simulated data to attach to each layer that should have some.
+   *
+   * Zero — the default — describes the shape of the answer without carrying it.
+   * A few is enough for a harness to check the columns it got back against the
+   * columns it was told to expect.
+   */
+  samples?: number;
   /**
    * A gazetteer place id to build terms around — it, everything inside it, and
    * everything it is inside. "anywhere" draws from the whole gazetteer.
@@ -1300,7 +1322,7 @@ function unionBbox(
   );
 }
 
-function expectation(plan: Plan, profile: string): TermExpectation {
+function expectation(plan: Plan, profile: string, rng: Rng, samples: number): TermExpectation {
   const places: PlaceExpectation[] = plan.places.map((slot) => {
     // Biggest first, because population is the tie-break almost everything
     // reaches for — which makes candidates[0] the conventional answer, and a
@@ -1353,8 +1375,22 @@ function expectation(plan: Plan, profile: string): TermExpectation {
   const antimeridian = !!bbox && bbox[2] - bbox[0] > 180;
   const needsLocation = plan.places.some((s) => s.deictic);
 
+  // What comes back, per kind. Built from the places the query resolved to, so
+  // a layer that cannot have rows there says so with a reason.
+  const resolved = plan.places.filter((s) => !s.negated).map((s) => s.place);
+  const scale = scaleOf(resolved);
+  const layers = plan.subjects.map((s) => {
+    const layer = buildLayer(s.profile, s.typed, resolved, scale);
+    if (samples > 0) {
+      layer.sample = simulateLayer(layer, resolved.filter(Boolean) as Place[], rng, samples);
+    }
+    return layer;
+  });
+
   return {
     intent: plan.intent,
+    scale,
+    layers,
     subjects: plan.subjects.map((s) => ({
       typed: s.typed,
       canonical: s.canonical,
@@ -1454,6 +1490,9 @@ export function generateTerms(options: TermsOptions): TermSet {
   // Namespaced away from the file generator, so the same three words are not
   // quietly the same roll in two different products.
   const rng = new Rng(`terms:${opts.seed}`);
+  // Zero unless asked for, and the draw only happens when it is — so a seed
+  // generated before samples existed still reproduces byte for byte.
+  const samples = Math.max(0, Math.min(20, Math.floor(opts.samples ?? 0)));
 
   // Selected quirks in catalogue order, or the whole catalogue when nothing is
   // selected and something was asked for. Catalogue order rather than selection
@@ -1525,7 +1564,7 @@ export function generateTerms(options: TermsOptions): TermSet {
       notes.push(result.note);
     }
 
-    const expect = expectation(plan, opts.profile);
+    const expect = expectation(plan, opts.profile, rng, samples);
 
     if (expect.antimeridian) {
       notes.push(

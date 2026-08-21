@@ -62,6 +62,7 @@ export type { Region } from "./regions";
 
 /* ── the search box, rather than the map ─────────────────────────────────── */
 export { generateTerms, inspectTerms, MAX_TERMS, writeTerms, TERM_FORMATS, getTermFormat } from "./search/index";
+export { buildLayer, renderFor, rowsExpected, scaleOf, simulateLayer } from "./search/index";
 export {
   EXCLUSIVE_QUIRKS,
   getQuirk,
@@ -87,11 +88,14 @@ export type {
   Alias,
   AliasKind,
   Intent,
+  LayerExpectation,
   Place,
   PlaceExpectation,
   PlaceKind,
   Quirk,
   QuirkCategory,
+  Render,
+  Scale,
   QuirkNeeds,
   QuirkPhase,
   SearchTerm,

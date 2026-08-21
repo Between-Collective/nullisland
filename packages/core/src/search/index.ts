@@ -49,6 +49,9 @@ export {
 } from "./phrasing";
 export type { Intent, Subject } from "./phrasing";
 
+export { buildLayer, renderFor, rowsExpected, scaleOf } from "./layers";
+export type { LayerExpectation, Render, Scale } from "./layers";
+export { simulateLayer } from "./simulate";
 export { inspectTerms } from "./clean";
 export { getTermFormat, TERM_FORMATS, writeTerms } from "./write";
 export type { TermFile, TermFormatId, TermFormatMeta } from "./write";

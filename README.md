@@ -277,6 +277,34 @@ curl https://nullisland.app/api/terms?list=all
 
 No word in it points at two data types — asserted, because ambiguity in the one direction it exists to serve would make it useless.
 
+### What should come back
+
+A query naming three kinds is three result sets. `expect.layers[]` has one per
+kind, with the columns it carries, how a viewer should draw it, and whether it
+can have rows at all:
+
+> **show me all aircraft, devices and vessels that were in México D.F. yesterday**
+>
+> - `aircraft` → `flight-adsb`, drawn as **lines**, 14 columns — `icao24`, `callsign`, `baro_altitude`, …
+> - `devices` → `mobile-location-pings`, drawn as **clustered**, 14 columns — `ad_id`, `id_type`, `horizontal_accuracy`, …
+> - `vessels` → **no rows, and that is the answer.** Mexico City has no coast and no navigable inland waterway.
+
+Returning vessels there is one bug; reporting the whole query as "no results" is
+the other. `render` is the display strategy for that geometry at that width —
+`markers` at a venue, `clustered` in a city, `heatmap` across a country, and
+lines and polygons generalised as the query widens.
+
+Exactly one rule decides whether a layer can have rows, because exactly one can
+be stated for every place without guessing: **vessels need water**, and every
+entry in the gazetteer is marked `coastal`, `inland` or `none` by hand. Whether
+a city has a scooter scheme or publishes a GTFS feed is a fact about this month,
+and a fixture asserting it would be wrong by the time anyone read it.
+
+`--samples 3` (or `?samples=3`) attaches rows shaped like the real feed, with
+coordinates inside the place the query named — real ad IDs, real ICAO24
+addresses, built by the same field machinery the file half uses, so a row here
+and a row in a generated fixture of that type are the same shape.
+
 ### A corpus, over and over
 
 For a harness that wants a broad mix, runs against it, and asks for another: **shuffle** varies the kinds term by term across the whole catalogue, so two seeds give two genuinely different spreads rather than the same spread reworded. Three rounds cover every data type and every quirk there is — asserted in the suite, not hoped for.
@@ -346,7 +374,7 @@ To check everything:
 npm run check
 ```
 
-That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces and the endpoint, `packages/core/scripts/verify.ts` (2,450 assertions) the CLI smoke test (119 assertions), and a four-seed corpus soak. It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
+That builds the core package, then runs `tsc --noEmit` and ESLint over all three workspaces and the endpoint, `packages/core/scripts/verify.ts` (2,471 assertions) the CLI smoke test (119 assertions), and a four-seed corpus soak. It covers every problem in every format it applies to, binary structure validation of generated shapefiles (header lengths, record tiling, `.shx`/`.dbf` consistency, ZIP CRCs), XML well-formedness for KML and GPX, ring closure and winding order for boundaries, every data type in three formats, every domain problem against the data types it claims (and its refusal against the ones it doesn't), and determinism — including that every reproduce link in a package README really does rebuild its file byte for byte, that the CLI's output matches the library's to the byte, and that any settings rebuild from their own share link — the fractions included, since a link only carries whole percent.
 
 For the search half it covers the gazetteer itself (every centroid inside its own box, every containment chain terminating, ambiguity symmetric in both directions), that every quirk in the catalogue really applies rather than being offered and doing nothing, that every set describes its own query text, that the containers round-trip — every CSV row the same width, every JSONL line parseable on its own, every query preserved byte for byte — and the edges: a hostile seed that cannot escape the filename, an anchor that is not a date, a quirk id that is not in the catalogue.
 

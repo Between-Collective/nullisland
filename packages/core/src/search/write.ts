@@ -94,6 +94,10 @@ function termToJson(term: SearchTerm): Record<string, unknown> {
       subjects: term.expect.subjects,
       anySubject: term.expect.anySubject,
       dataType: term.expect.profile,
+      // One result set per kind asked for, with the columns it carries and how
+      // a viewer should draw it. A layer with expectRows false is a real answer.
+      scale: term.expect.scale,
+      layers: term.expect.layers,
       resolvable: term.expect.resolvable,
       ambiguous: term.expect.ambiguous,
       empty: term.expect.empty,
@@ -168,6 +172,9 @@ const CSV_HEADER = [
   "ambiguous",
   "expect_empty",
   "needs_location",
+  "scale",
+  "layers_expecting_rows",
+  "layers_expecting_none",
   "notes",
 ];
 
@@ -203,6 +210,9 @@ function writeCsv(set: TermSet): string {
         term.expect.ambiguous,
         term.expect.empty,
         term.expect.needsLocation,
+        term.expect.scale,
+        term.expect.layers.filter((l) => l.expectRows).map((l) => `${l.dataType}:${l.render}`).join(" | "),
+        term.expect.layers.filter((l) => !l.expectRows).map((l) => l.dataType).join(" | "),
         term.notes.join(" "),
       ]
         .map(cell)
@@ -264,6 +274,20 @@ function bullet(term: SearchTerm): string[] {
               .map((c) => `${c.name} (${c.country})`)
               .join(", ")}`
           : ""),
+    );
+  }
+
+  for (const layer of term.expect.layers) {
+    if (!layer.expectRows) {
+      out.push(
+        `- \`${layer.typed}\` → **no rows, and that is the answer.** ${layer.reason ?? ""}`,
+      );
+      continue;
+    }
+    out.push(
+      `- \`${layer.typed}\` → **${layer.canonical}** (\`${layer.dataType}\`), drawn as ` +
+        `**${layer.render}** · ${layer.fields.length} columns: ${layer.fields.slice(0, 6).join(", ")}` +
+        (layer.fields.length > 6 ? ", …" : ""),
     );
   }
 
@@ -337,7 +361,7 @@ function writeMd(set: TermSet): string {
     if (labels.length) lines.push(`Quirks: ${labels.join(", ")}`, "");
     else lines.push("Nothing wrong with this one — it is a control case.", "");
     lines.push(
-      `Intent: ${term.expect.intent} · Asks for: ` +
+      `Intent: ${term.expect.intent} · Scale: ${term.expect.scale} · Asks for: ` +
         (term.expect.anySubject
           ? "everything — no kind of thing named"
           : term.expect.subjects

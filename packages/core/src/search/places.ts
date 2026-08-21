@@ -60,6 +60,22 @@ export interface Place {
   population?: number;
   /** Something true about this place that breaks a filter written for it. */
   note?: string;
+  /**
+   * Whether there is vessel traffic here, and of what kind.
+   *
+   * The one trait that decides whether a whole layer can have rows: ask for
+   * vessels in Mexico City — 2,240 m up and 300 km from the sea — and the
+   * honest answer is none, which is a different thing from a search that failed
+   * to find them. `inland` is a navigable river or canal carrying commercial
+   * traffic, which does broadcast AIS in Europe; `none` is no vessel traffic at
+   * all.
+   *
+   * Only this one is modelled, because only this one can be stated for every
+   * entry without guessing. Whether a city has a bike scheme or publishes GTFS
+   * changes by the month, and a fixture that asserts it would be wrong by the
+   * time anyone read it.
+   */
+  water: "coastal" | "inland" | "none";
 }
 
 /** A venue sits on a point; the box is roughly the site around it. */
@@ -90,6 +106,7 @@ export const PLACES: Place[] = [
     ],
     population: 5_220_000,
     note: "The box above is the main islands. Include the Chatham Islands and it crosses the antimeridian to about -176, so a naive minLon/maxLon filter for New Zealand either drops the Chathams or selects the entire planet.",
+    water: "coastal",
   },
   {
     id: "pt",
@@ -101,6 +118,7 @@ export const PLACES: Place[] = [
     country: "PT",
     population: 10_640_000,
     note: "Mainland only. Portugal legally includes the Azores, which reach -31.3° — the real national bbox is more than three times as wide as the one everyone draws.",
+    water: "coastal",
   },
   {
     id: "jp",
@@ -112,6 +130,7 @@ export const PLACES: Place[] = [
     country: "JP",
     aliases: [{ name: "日本", kind: "endonym" }, { name: "Nippon", kind: "endonym" }],
     population: 123_900_000,
+    water: "coastal",
   },
   {
     id: "gb",
@@ -129,6 +148,7 @@ export const PLACES: Place[] = [
     ],
     population: 68_300_000,
     note: "\"England\" and \"Britain\" are typed for it constantly and neither one means it. England excludes Scotland, Wales and Northern Ireland; Great Britain excludes Northern Ireland. Resolving either to the UK returns devices the user did not ask for.",
+    water: "coastal",
   },
   {
     id: "fr",
@@ -140,6 +160,7 @@ export const PLACES: Place[] = [
     country: "FR",
     population: 68_400_000,
     note: "Metropolitan France. With the overseas departments — Guadeloupe, Réunion, French Guiana, French Polynesia — France spans about 300° of longitude and both hemispheres. Whichever box you picked, some dataset disagrees.",
+    water: "coastal",
   },
   {
     id: "de",
@@ -151,6 +172,7 @@ export const PLACES: Place[] = [
     country: "DE",
     aliases: [{ name: "Deutschland", kind: "endonym" }],
     population: 83_500_000,
+    water: "coastal",
   },
   {
     id: "us",
@@ -167,6 +189,7 @@ export const PLACES: Place[] = [
     ],
     population: 335_000_000,
     note: "Contiguous states only. Alaska's Aleutians cross the antimeridian to about 172°E, so the true US bbox wraps — and every filter written as minLon < x < maxLon silently excludes them.",
+    water: "coastal",
   },
   {
     id: "au",
@@ -178,6 +201,7 @@ export const PLACES: Place[] = [
     country: "AU",
     aliases: [{ name: "Oz", kind: "colloquial" }],
     population: 26_700_000,
+    water: "coastal",
   },
   {
     id: "br",
@@ -189,6 +213,7 @@ export const PLACES: Place[] = [
     country: "BR",
     aliases: [{ name: "Brasil", kind: "endonym" }],
     population: 213_400_000,
+    water: "coastal",
   },
   {
     id: "nl",
@@ -204,6 +229,7 @@ export const PLACES: Place[] = [
     ],
     population: 17_900_000,
     note: "Holland is two of its twelve provinces. Users mean the country; a gazetteer that matches the string exactly gives them a third of it.",
+    water: "coastal",
   },
   {
     id: "ae",
@@ -215,6 +241,7 @@ export const PLACES: Place[] = [
     country: "AE",
     aliases: [{ name: "UAE", kind: "abbreviation" }],
     population: 10_200_000,
+    water: "coastal",
   },
   {
     id: "ge-country",
@@ -228,6 +255,7 @@ export const PLACES: Place[] = [
     ambiguousWith: ["us-ga"],
     population: 3_700_000,
     note: "A country and a US state share this name exactly. There is no spelling that distinguishes them and the two are 9,000 km apart, so a ranker that quietly prefers one is wrong half the time with total confidence.",
+    water: "coastal",
   },
   {
     id: "tr",
@@ -243,6 +271,7 @@ export const PLACES: Place[] = [
     ],
     population: 85_300_000,
     note: "Renamed at the UN in 2022, so both spellings are live, and the old one is also a bird and a common false positive in any free-text place matcher.",
+    water: "coastal",
   },
   {
     id: "sg",
@@ -254,6 +283,7 @@ export const PLACES: Place[] = [
     country: "SG",
     population: 5_900_000,
     note: "A city and a country with the same name and the same boundary, so \"in Singapore\" is simultaneously a city query and a country query and the two should return the same rows.",
+    water: "coastal",
   },
 
   /* ── Regions and states ────────────────────────────────────────────────── */
@@ -268,6 +298,7 @@ export const PLACES: Place[] = [
     within: "us",
     ambiguousWith: ["ge-country"],
     population: 11_100_000,
+    water: "coastal",
   },
   {
     id: "us-ca",
@@ -281,6 +312,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "CA", kind: "abbreviation" }],
     population: 39_000_000,
     note: "\"CA\" is also the ISO code for Canada, so the two-letter form resolves to a country nineteen times the size.",
+    water: "coastal",
   },
   {
     id: "gb-scotland",
@@ -293,6 +325,7 @@ export const PLACES: Place[] = [
     within: "gb",
     aliases: [{ name: "Alba", kind: "endonym" }],
     population: 5_500_000,
+    water: "coastal",
   },
   {
     id: "de-bayern",
@@ -305,6 +338,7 @@ export const PLACES: Place[] = [
     within: "de",
     aliases: [{ name: "Bayern", kind: "endonym" }],
     population: 13_400_000,
+    water: "inland",
   },
   {
     id: "jp-kansai",
@@ -318,6 +352,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Kinki", kind: "endonym" }],
     population: 22_000_000,
     note: "An informal region with no administrative boundary, so two gazetteers give two different polygons and neither is wrong.",
+    water: "coastal",
   },
   {
     id: "nz-south",
@@ -330,6 +365,7 @@ export const PLACES: Place[] = [
     within: "nz",
     aliases: [{ name: "Te Waipounamu", kind: "endonym" }],
     population: 1_200_000,
+    water: "coastal",
   },
 
   /* ── Cities ────────────────────────────────────────────────────────────── */
@@ -345,6 +381,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "東京", kind: "endonym" }],
     population: 13_960_000,
     note: "Tokyo Metropolis legally includes the Ogasawara Islands, 1,000 km south. Filter by the prefecture and you get devices in the Pacific; filter by the 23 wards and you drop them.",
+    water: "coastal",
   },
   {
     id: "kyoto",
@@ -358,6 +395,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "京都", kind: "endonym" }],
     population: 1_460_000,
     note: "One transposed vowel from Tokyo, 370 km away. Every fuzzy matcher with an edit distance of two will offer you the other one.",
+    water: "none",
   },
   {
     id: "osaka",
@@ -370,6 +408,7 @@ export const PLACES: Place[] = [
     within: "jp-kansai",
     aliases: [{ name: "大阪", kind: "endonym" }, { name: "Ōsaka", kind: "endonym" }],
     population: 2_750_000,
+    water: "coastal",
   },
   {
     id: "lisbon",
@@ -382,6 +421,7 @@ export const PLACES: Place[] = [
     within: "pt",
     aliases: [{ name: "Lisboa", kind: "endonym" }],
     population: 545_000,
+    water: "coastal",
   },
   {
     id: "london",
@@ -395,6 +435,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "LDN", kind: "abbreviation" }],
     ambiguousWith: ["london-on"],
     population: 8_900_000,
+    water: "coastal",
   },
   {
     id: "london-on",
@@ -408,6 +449,7 @@ export const PLACES: Place[] = [
     ambiguousWith: ["london"],
     population: 423_000,
     note: "Population ranking hides this one until a Canadian customer files the bug.",
+    water: "none",
   },
   {
     id: "paris",
@@ -420,6 +462,7 @@ export const PLACES: Place[] = [
     within: "fr",
     ambiguousWith: ["paris-tx"],
     population: 2_100_000,
+    water: "inland",
   },
   {
     id: "paris-tx",
@@ -432,6 +475,7 @@ export const PLACES: Place[] = [
     within: "us",
     ambiguousWith: ["paris"],
     population: 24_800,
+    water: "none",
   },
   {
     id: "cambridge",
@@ -444,6 +488,7 @@ export const PLACES: Place[] = [
     within: "gb",
     ambiguousWith: ["cambridge-ma"],
     population: 145_000,
+    water: "none",
   },
   {
     id: "cambridge-ma",
@@ -457,6 +502,7 @@ export const PLACES: Place[] = [
     ambiguousWith: ["cambridge"],
     population: 118_000,
     note: "Two university cities 5,000 km apart with near-identical populations, so there is no ranking signal to break the tie with. This is the one that catches \"pick the biggest\".",
+    water: "coastal",
   },
   {
     id: "newcastle",
@@ -470,6 +516,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Newcastle upon Tyne", kind: "endonym" }],
     ambiguousWith: ["newcastle-au"],
     population: 300_000,
+    water: "coastal",
   },
   {
     id: "newcastle-au",
@@ -482,6 +529,7 @@ export const PLACES: Place[] = [
     within: "au",
     ambiguousWith: ["newcastle"],
     population: 322_000,
+    water: "coastal",
   },
   {
     id: "sanjose",
@@ -495,6 +543,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "San José", kind: "endonym" }],
     ambiguousWith: ["sanjose-cr"],
     population: 970_000,
+    water: "none",
   },
   {
     id: "sanjose-cr",
@@ -507,6 +556,7 @@ export const PLACES: Place[] = [
     ambiguousWith: ["sanjose"],
     population: 342_000,
     note: "The accent is the only thing between the two, and it is the first thing an ASCII-folding index throws away.",
+    water: "none",
   },
   {
     id: "auckland",
@@ -519,6 +569,7 @@ export const PLACES: Place[] = [
     within: "nz",
     aliases: [{ name: "Tāmaki Makaurau", kind: "endonym" }],
     population: 1_460_000,
+    water: "coastal",
   },
   {
     id: "wellington",
@@ -531,6 +582,7 @@ export const PLACES: Place[] = [
     within: "nz",
     aliases: [{ name: "Te Whanganui-a-Tara", kind: "endonym" }],
     population: 217_000,
+    water: "coastal",
   },
   {
     id: "munich",
@@ -544,6 +596,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "München", kind: "endonym" }, { name: "Muenchen", kind: "colloquial" }],
     population: 1_490_000,
     note: "Three spellings in live use — Munich, München, Muenchen — and a user typing any of them expects the same rows back.",
+    water: "none",
   },
   {
     id: "cologne",
@@ -556,6 +609,7 @@ export const PLACES: Place[] = [
     within: "de",
     aliases: [{ name: "Köln", kind: "endonym" }, { name: "Koeln", kind: "colloquial" }],
     population: 1_080_000,
+    water: "inland",
   },
   {
     id: "florence",
@@ -568,6 +622,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Firenze", kind: "endonym" }],
     population: 361_000,
     note: "The English name and the local name share no substring at all, so a prefix index finds neither from the other.",
+    water: "none",
   },
   {
     id: "vienna",
@@ -579,6 +634,7 @@ export const PLACES: Place[] = [
     country: "AT",
     aliases: [{ name: "Wien", kind: "endonym" }],
     population: 1_980_000,
+    water: "inland",
   },
   {
     id: "saopaulo",
@@ -592,6 +648,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Sao Paulo", kind: "colloquial" }],
     population: 12_300_000,
     note: "Almost nobody types the tilde. If the index is not folded, the correct spelling and the typed one are different strings.",
+    water: "none",
   },
   {
     id: "zurich",
@@ -603,6 +660,7 @@ export const PLACES: Place[] = [
     country: "CH",
     aliases: [{ name: "Zurich", kind: "colloquial" }, { name: "Zuerich", kind: "colloquial" }],
     population: 435_000,
+    water: "none",
   },
   {
     id: "mumbai",
@@ -615,6 +673,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Bombay", kind: "former" }],
     population: 12_400_000,
     note: "Renamed in 1995, and thirty years on the old name is still in half the address data your users paste in.",
+    water: "coastal",
   },
   {
     id: "istanbul",
@@ -631,6 +690,7 @@ export const PLACES: Place[] = [
     ],
     population: 15_600_000,
     note: "The Turkish dotted capital İ lowercases to i̇ under the invariant rules and to ı under Turkish ones, so a case-insensitive match works or fails depending on the server's locale.",
+    water: "coastal",
   },
   {
     id: "newyork",
@@ -648,6 +708,7 @@ export const PLACES: Place[] = [
     ],
     population: 8_300_000,
     note: "The city sits inside a state of the same name that is 400 km across. \"Devices in New York\" is two different queries and the string cannot tell you which.",
+    water: "coastal",
   },
   {
     id: "sanfrancisco",
@@ -660,6 +721,7 @@ export const PLACES: Place[] = [
     within: "us-ca",
     aliases: [{ name: "SF", kind: "abbreviation" }, { name: "SFO", kind: "code" }],
     population: 810_000,
+    water: "coastal",
   },
   {
     id: "losangeles",
@@ -673,6 +735,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "LA", kind: "abbreviation" }, { name: "LAX", kind: "code" }],
     population: 3_820_000,
     note: "\"LA\" is also the state code for Louisiana, 2,500 km away, and a common word in three other languages.",
+    water: "coastal",
   },
   {
     id: "mexicocity",
@@ -688,6 +751,7 @@ export const PLACES: Place[] = [
       { name: "México D.F.", kind: "former" },
     ],
     population: 9_200_000,
+    water: "none",
   },
   {
     id: "dubai",
@@ -700,6 +764,7 @@ export const PLACES: Place[] = [
     within: "ae",
     aliases: [{ name: "دبي", kind: "endonym" }],
     population: 3_600_000,
+    water: "coastal",
   },
   {
     id: "sydney",
@@ -712,6 +777,7 @@ export const PLACES: Place[] = [
     within: "au",
     ambiguousWith: ["sydney-ns"],
     population: 5_300_000,
+    water: "coastal",
   },
   {
     id: "sydney-ns",
@@ -724,6 +790,7 @@ export const PLACES: Place[] = [
     ambiguousWith: ["sydney"],
     population: 30_000,
     note: "Nova Scotia. Antipodal enough to the Australian one that a swapped sign in a bbox filter lands you here and looks plausible.",
+    water: "coastal",
   },
   {
     id: "mobile",
@@ -736,6 +803,7 @@ export const PLACES: Place[] = [
     within: "us",
     population: 184_000,
     note: "A city whose name is an ordinary adjective and a device category at once. \"Show me mobile devices in Mobile\" is a real query and only one of those two words is a place.",
+    water: "coastal",
   },
   {
     id: "nice",
@@ -749,6 +817,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Nizza", kind: "exonym" }],
     population: 342_000,
     note: "Also an English adjective, so a place matcher scanning free text finds it in \"nice work\" and puts your devices on the Côte d'Azur.",
+    water: "coastal",
   },
   {
     id: "split",
@@ -760,6 +829,7 @@ export const PLACES: Place[] = [
     country: "HR",
     population: 160_000,
     note: "Also a verb, a noun, and a method on every string type in existence. It reaches your place matcher inside sentences that have nothing to do with Croatia.",
+    water: "coastal",
   },
   {
     id: "reading",
@@ -772,6 +842,7 @@ export const PLACES: Place[] = [
     within: "gb",
     population: 175_000,
     note: "A gerund with a town attached. Any free-text extractor that is not part-of-speech aware finds it in \"reading the manifest\".",
+    water: "none",
   },
 
   /* ── Venues ────────────────────────────────────────────────────────────── */
@@ -790,6 +861,7 @@ export const PLACES: Place[] = [
       { name: "Benfica stadium", kind: "colloquial" },
     ],
     note: "Two accents and a Portuguese article that English speakers reliably render as \"de\". Every one of \"Estadio de Luz\", \"Estádio da Luz\" and \"the Luz\" means this building.",
+    water: "none",
   },
   {
     id: "wembley",
@@ -802,6 +874,7 @@ export const PLACES: Place[] = [
     within: "london",
     aliases: [{ name: "Wembley", kind: "colloquial" }],
     note: "\"Wembley\" on its own is also the surrounding district, several square kilometres larger than the stadium. Which one you resolve to changes the answer by an order of magnitude.",
+    water: "none",
   },
   {
     id: "emirates-stadium",
@@ -814,6 +887,7 @@ export const PLACES: Place[] = [
     within: "london",
     aliases: [{ name: "Arsenal Stadium", kind: "colloquial" }],
     note: "A sponsor name that has changed before and will change again, and one that collides with an airline, a country and an airport in the same index.",
+    water: "none",
   },
   {
     id: "camp-nou",
@@ -826,6 +900,7 @@ export const PLACES: Place[] = [
     within: "barcelona",
     aliases: [{ name: "Nou Camp", kind: "colloquial" }],
     note: "Half the English-speaking world types the two words in the wrong order, and \"Nou Camp\" is not a string edit away from the right one in most tokenisers.",
+    water: "none",
   },
   {
     id: "bernabeu",
@@ -838,6 +913,7 @@ export const PLACES: Place[] = [
     within: "madrid",
     aliases: [{ name: "Estadio Santiago Bernabeu", kind: "colloquial" }],
     note: "Shares its first word with a capital city 10,000 km away, so a matcher that scores on any token hit puts this in Chile.",
+    water: "none",
   },
   {
     id: "allianz-arena",
@@ -848,6 +924,7 @@ export const PLACES: Place[] = [
     bbox: site(11.6247, 48.2188, 0.3),
     country: "DE",
     within: "munich",
+    water: "none",
   },
   {
     id: "tokyo-skytree",
@@ -860,6 +937,7 @@ export const PLACES: Place[] = [
     within: "tokyo",
     aliases: [{ name: "東京スカイツリー", kind: "endonym" }, { name: "Sky Tree", kind: "colloquial" }],
     note: "Contains the name of its own city, so a matcher that strips the venue and keeps the city gets the right answer for the wrong reason — and gets 13 million people's worth of extra devices.",
+    water: "none",
   },
   {
     id: "shibuya-crossing",
@@ -872,6 +950,7 @@ export const PLACES: Place[] = [
     within: "tokyo",
     aliases: [{ name: "Shibuya Scramble", kind: "colloquial" }],
     note: "An intersection, not a building. It has no official boundary at all, so \"in Shibuya Crossing\" needs a radius somebody chose.",
+    water: "none",
   },
   {
     id: "fushimi-inari",
@@ -883,6 +962,7 @@ export const PLACES: Place[] = [
     country: "JP",
     within: "kyoto",
     aliases: [{ name: "Fushimi Inari", kind: "colloquial" }, { name: "伏見稲荷大社", kind: "endonym" }],
+    water: "none",
   },
   {
     id: "eiffel-tower",
@@ -894,6 +974,7 @@ export const PLACES: Place[] = [
     country: "FR",
     within: "paris",
     aliases: [{ name: "Tour Eiffel", kind: "endonym" }],
+    water: "inland",
   },
   {
     id: "brandenburg-gate",
@@ -905,6 +986,7 @@ export const PLACES: Place[] = [
     country: "DE",
     within: "berlin",
     aliases: [{ name: "Brandenburger Tor", kind: "endonym" }],
+    water: "none",
   },
   {
     id: "times-square",
@@ -916,6 +998,7 @@ export const PLACES: Place[] = [
     country: "US",
     within: "newyork",
     note: "Two of the commonest words in English sitting next to each other. Quoting is the only thing that keeps it out of a full-text query's noise.",
+    water: "none",
   },
   {
     id: "golden-gate",
@@ -927,6 +1010,7 @@ export const PLACES: Place[] = [
     country: "US",
     within: "sanfrancisco",
     note: "2.7 km long and 27 m wide. A point-radius match around its centroid misses both ends of it.",
+    water: "coastal",
   },
   {
     id: "opera-house",
@@ -937,6 +1021,7 @@ export const PLACES: Place[] = [
     bbox: site(151.2153, -33.8568, 0.2),
     country: "AU",
     within: "sydney",
+    water: "coastal",
   },
   {
     id: "eden-park",
@@ -947,6 +1032,7 @@ export const PLACES: Place[] = [
     bbox: site(174.7448, -36.8748, 0.3),
     country: "NZ",
     within: "auckland",
+    water: "none",
   },
   {
     id: "burj-khalifa",
@@ -958,6 +1044,7 @@ export const PLACES: Place[] = [
     country: "AE",
     within: "dubai",
     note: "828 m of it is vertical. Every device inside shares one footprint, and a floor is the only thing that separates them.",
+    water: "none",
   },
   {
     id: "marina-bay-sands",
@@ -968,6 +1055,7 @@ export const PLACES: Place[] = [
     bbox: site(103.8607, 1.2834, 0.4),
     country: "SG",
     within: "sg",
+    water: "coastal",
   },
   {
     id: "heathrow",
@@ -983,6 +1071,7 @@ export const PLACES: Place[] = [
       { name: "London Heathrow", kind: "colloquial" },
     ],
     note: "\"London Heathrow\" contains a city name 25 km away, and LHR is three letters that also appear as a column header, a status code and an initialism in half the datasets it lands in.",
+    water: "none",
   },
   {
     id: "haneda",
@@ -998,6 +1087,7 @@ export const PLACES: Place[] = [
       { name: "Tokyo International Airport", kind: "endonym" },
     ],
     note: "Its official name is Tokyo International Airport, which is also what people call Narita, 60 km in the other direction.",
+    water: "coastal",
   },
   {
     id: "lisbon-airport",
@@ -1013,6 +1103,7 @@ export const PLACES: Place[] = [
       { name: "Lisbon Airport", kind: "colloquial" },
       { name: "Portela", kind: "former" },
     ],
+    water: "none",
   },
 
   /* ── Cities that exist here only to be somewhere else's parent ─────────── */
@@ -1025,6 +1116,7 @@ export const PLACES: Place[] = [
     bbox: [2.05, 41.32, 2.23, 41.47],
     country: "ES",
     population: 1_620_000,
+    water: "coastal",
   },
   {
     id: "madrid",
@@ -1035,6 +1127,7 @@ export const PLACES: Place[] = [
     bbox: [-3.89, 40.31, -3.52, 40.64],
     country: "ES",
     population: 3_280_000,
+    water: "none",
   },
   {
     id: "berlin",
@@ -1046,6 +1139,7 @@ export const PLACES: Place[] = [
     country: "DE",
     within: "de",
     population: 3_670_000,
+    water: "inland",
   },
   /* ── Names with an apostrophe in them ──────────────────────────────────── */
   {
@@ -1058,6 +1152,7 @@ export const PLACES: Place[] = [
     country: "IE",
     within: "dublin",
     note: "A perfectly ordinary street name that ends a SQL string literal early, and a JSON string too if the escaping was done by hand.",
+    water: "inland",
   },
   {
     id: "dublin",
@@ -1069,6 +1164,7 @@ export const PLACES: Place[] = [
     country: "IE",
     population: 592_000,
     ambiguousWith: ["dublin-oh"],
+    water: "coastal",
   },
   {
     id: "dublin-oh",
@@ -1081,6 +1177,7 @@ export const PLACES: Place[] = [
     within: "us",
     ambiguousWith: ["dublin"],
     population: 49_000,
+    water: "none",
   },
   {
     id: "ndjamena",
@@ -1092,6 +1189,7 @@ export const PLACES: Place[] = [
     country: "TD",
     population: 1_600_000,
     note: "An apostrophe in the second character. Anything that quotes by wrapping in single quotes produces a syntax error before it produces a result.",
+    water: "none",
   },
   {
     id: "coeur-dalene",
@@ -1104,6 +1202,7 @@ export const PLACES: Place[] = [
     within: "us",
     aliases: [{ name: "Coeur dAlene", kind: "colloquial" }],
     population: 56_000,
+    water: "none",
   },
   {
     id: "shertogenbosch",
@@ -1117,6 +1216,7 @@ export const PLACES: Place[] = [
     aliases: [{ name: "Den Bosch", kind: "colloquial" }],
     population: 157_000,
     note: "Starts with an apostrophe. Sorting, trimming, capitalising and quoting all do something surprising to it, and every one of them is somebody's idea of normalisation.",
+    water: "inland",
   },
 ];
 

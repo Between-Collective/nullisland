@@ -83,7 +83,7 @@ interface Args {
 const TAKES_VALUE = new Set([
   "format", "type", "profile", "count", "shape", "region", "problems", "intensity",
   "seed", "boundary", "coverage", "out", "from-url", "url", "package", "list",
-  "terms", "term-format", "quirks", "near", "anchor", "types",
+  "terms", "term-format", "quirks", "near", "anchor", "types", "samples",
 ]);
 
 const IS_FLAG = new Set([
@@ -765,6 +765,7 @@ function generateTermSet(args: Args): void {
     profile: profiles[0] ?? profile,
     profiles,
     shuffle: args.flags.has("shuffle"),
+    samples: Math.round(number("--samples", args.values.get("samples"), 0, 0, 20)),
     quirks,
     intensity: clean ? 0 : number("--intensity", args.values.get("intensity"), 0.15, 0, 1),
     near,

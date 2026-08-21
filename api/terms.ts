@@ -181,6 +181,9 @@ export default function handler(req: Request, res: Response): void {
     shuffle,
     quirks,
     intensity: clean ? 0 : Number(params.get("intensity") ?? 0.15),
+    // Rows of simulated data per layer. Off by default: it multiplies the size
+    // of a corpus, and the shape of the answer is usually what a harness needs.
+    samples: Math.max(0, Math.min(20, Math.floor(Number(params.get("samples") ?? 0)))),
     near,
     anchor,
     clean,
