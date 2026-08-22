@@ -1034,6 +1034,7 @@ console.log("\n9. the reproducibility promise");
       count: 43,
       profiles: [],
       shuffle: false,
+      samples: 0,
       quirks: [],
       intensity: 0.15,
       near: "anywhere",
@@ -1059,6 +1060,7 @@ console.log("\n9. the reproducibility promise");
       appOf({ mode: "terms", file: opts({ format: "shapefile", profile: "maritime-ais" }) }),
       appOf({ mode: "terms", terms: termsOf({ profiles: ["mobile-location-pings", "flight-adsb", "maritime-ais"] }) }),
       appOf({ mode: "terms", terms: termsOf({ shuffle: true }) }),
+      appOf({ mode: "terms", terms: termsOf({ samples: 3 }) }),
       appOf({ mode: "terms", terms: termsOf({ shuffle: true, clean: true, count: 200 }) }),
     ];
     for (const config of cases) {

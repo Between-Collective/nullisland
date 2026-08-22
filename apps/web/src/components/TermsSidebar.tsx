@@ -184,6 +184,24 @@ export function TermsSidebar({
           </p>
         )}
 
+        {/* Rows shaped like the real feed, inside the place the query named.
+            Off by default because it multiplies the size of a download, and on
+            in one click because "what does a row of this look like" is the next
+            question after "which layers come back". */}
+        <button
+          type="button"
+          aria-pressed={terms.samples > 0}
+          onClick={() => patchTerms({ samples: terms.samples > 0 ? 0 : 3 })}
+          className={[
+            "w-full rounded-full border px-3 py-2 text-[12px] font-medium transition-colors",
+            terms.samples > 0
+              ? "border-ink bg-ink text-white"
+              : "border-line-strong bg-white text-ink hover:border-dim",
+          ].join(" ")}
+        >
+          {terms.samples > 0 ? "Showing sample rows" : "Show sample rows"}
+        </button>
+
         {/* What the kinds above actually are, as data. The words a user types
             are never the schema's, so the mapping from one to the other is the
             thing a classifier needs — and the thing that has only ever lived

@@ -126,6 +126,8 @@ export interface TermsConfig {
   profiles: string[];
   /** Vary the kinds from term to term. See TermsOptions.shuffle. */
   shuffle: boolean;
+  /** Rows of simulated data attached to each layer. See TermsOptions.samples. */
+  samples: number;
   quirks: string[];
   intensity: number;
   near: string;
@@ -164,6 +166,7 @@ export function encodeApp(config: AppConfig): string {
   if (terms.quirks.length) params.set("tq", terms.quirks.join("."));
   if (terms.profiles.length) params.set("tp", terms.profiles.join("."));
   if (terms.shuffle) params.set("tx", "1");
+  if (terms.samples) params.set("tv", String(terms.samples));
   return params.toString();
 }
 
@@ -205,6 +208,10 @@ export function decodeApp(hash: string): DecodedApp {
 
   if (params.has("tc")) terms.clean = params.get("tc") === "1";
   if (params.has("tx")) terms.shuffle = params.get("tx") === "1";
+  const samples = Number(params.get("tv"));
+  if (params.has("tv") && Number.isFinite(samples) && samples >= 0) {
+    terms.samples = Math.min(20, Math.floor(samples));
+  }
 
   const quirks = params.get("tq");
   if (quirks !== null) {

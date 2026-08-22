@@ -109,9 +109,11 @@ function Row({ term }: { term: SearchTerm }) {
         )}
       </div>
 
-      {/* The expected parse. This is the thing you assert against, so it is on
-          screen rather than only in the file. */}
+      {/* Two different questions, and they were one undifferentiated stack of
+          mono lines: what the query means, and what answering it should give
+          back. The second is the one people come looking for. */}
       <div className="mt-1.5 space-y-0.5 pl-9 font-mono text-[10.5px] leading-relaxed text-dim">
+        <div className="text-[9.5px] uppercase tracking-[0.11em] text-dim/70">means</div>
         {/* Only worth a line when it is not the obvious one: a single kind
             called what the schema calls it says nothing you cannot see. */}
         {term.expect.anySubject ? (
@@ -137,28 +139,6 @@ function Row({ term }: { term: SearchTerm }) {
             )}
           </div>
         ) : null}
-        {/* What comes back, per kind. A layer with no rows is an answer, and
-            the reason it has none is the useful half of it. */}
-        {term.expect.layers.map((layer, i) => (
-          <div key={`layer-${i}`}>
-            <span className="text-muted">{visible(layer.typed)}</span>
-            {" ⇒ "}
-            {layer.expectRows ? (
-              <>
-                <span className="text-mint-ink">{layer.dataType}</span>
-                <span className="text-dim">
-                  {" "}
-                  · {layer.render} · {layer.fields.length} cols
-                  {layer.fields.length ? ` (${layer.fields.slice(0, 3).join(", ")}…)` : ""}
-                </span>
-              </>
-            ) : (
-              <span className="text-cat-attributes">
-                no rows — {layer.reason?.split(".")[0]}
-              </span>
-            )}
-          </div>
-        ))}
         {places.length === 0 && <div>no place — nothing to filter on</div>}
         {places.map((place, i) => (
           <div key={i}>
@@ -200,6 +180,52 @@ function Row({ term }: { term: SearchTerm }) {
           </div>
         )}
       </div>
+
+      {/* What answering it should return, per kind. A layer with no rows is an
+          answer rather than a failure, so that is the one that gets the colour
+          — folding it into "no results" is the bug this is here to catch. */}
+      {term.expect.layers.length > 0 && (
+        <div className="mt-2 space-y-1 pl-9">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.11em] text-dim/70">
+            returns · {term.expect.scale} scale
+          </div>
+          {term.expect.layers.map((layer, i) => (
+            <div
+              key={`layer-${i}`}
+              className={[
+                "rounded-lg border px-2.5 py-1.5 font-mono text-[10.5px] leading-relaxed",
+                layer.expectRows
+                  ? "border-line bg-paper text-dim"
+                  : "border-cat-attributes/40 bg-cat-attributes/[0.07] text-cat-attributes",
+              ].join(" ")}
+            >
+              <span className="font-semibold text-ink">{visible(layer.typed)}</span>
+              {layer.expectRows ? (
+                <>
+                  <span className="text-mint-ink"> → {layer.dataType}</span>
+                  <span className="ml-1.5 rounded bg-card px-1.5 py-px text-[9.5px] text-muted">
+                    draw as {layer.render}
+                  </span>
+                  <div className="mt-0.5">
+                    {layer.fields.length} columns: {layer.fields.slice(0, 8).join(", ")}
+                    {layer.fields.length > 8 ? ", …" : ""}
+                  </div>
+                  {layer.sample?.length ? (
+                    <div className="scroll-thin mt-1 overflow-x-auto whitespace-nowrap text-[9.5px] text-muted">
+                      {JSON.stringify(layer.sample[0])}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold"> → no rows, and that is the answer</span>
+                  <div className="mt-0.5">{layer.reason}</div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </li>
   );
 }
@@ -230,6 +256,7 @@ export function TermsPanel({
         profile,
         profiles,
         shuffle: terms.shuffle,
+        samples: terms.samples,
         quirks: terms.quirks,
         intensity: terms.intensity,
         near: terms.near,

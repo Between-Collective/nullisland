@@ -70,6 +70,7 @@ const TERM_DEFAULTS: TermsConfig = {
   // turns a set of queries about one feed into queries that span several.
   profiles: [],
   shuffle: false,
+  samples: 0,
   quirks: [],
   intensity: 0.15,
   near: "anywhere",
